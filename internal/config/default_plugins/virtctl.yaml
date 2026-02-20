@@ -1,0 +1,187 @@
+# virtctl plugins for rk9s – KubeVirt / Harvester VM management
+# Requires: virtctl (https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/)
+# Scoped to virtualmachines.kubevirt.io (vm) and virtualmachineinstances.kubevirt.io (vmi)
+plugins:
+  virtctl-console:
+    shortCut: Shift-S
+    description: VM serial console
+    override: true
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          virtctl console $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        elif command -v harvester >/dev/null 2>&1; then
+          harvester vm shell $NAME -n ${NAMESPACE:-default}
+        else
+          echo "Install virtctl: https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/"
+          echo "  virtctl console $NAME -n ${NAMESPACE:-default}"
+        fi
+  virtctl-vnc:
+    shortCut: Shift-V
+    description: VM VNC console
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: true
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          virtctl vnc $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          echo "Install virtctl: https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/"
+          echo "  virtctl vnc $NAME -n ${NAMESPACE:-default}"
+        fi
+  virtctl-start:
+    shortCut: Shift-W
+    description: Start VM
+    confirm: true
+    scopes:
+      - virtualmachines.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          virtctl start $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          kubectl patch vm $NAME -n ${NAMESPACE:-default} --type merge -p '{"spec":{"running":true}}' --context $CONTEXT
+        fi
+  virtctl-stop:
+    shortCut: Shift-X
+    description: Stop VM
+    confirm: true
+    dangerous: true
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          virtctl stop $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          kubectl patch vm $NAME -n ${NAMESPACE:-default} --type merge -p '{"spec":{"running":false}}' --context $CONTEXT
+        fi
+  virtctl-restart:
+    shortCut: Shift-Z
+    description: Restart VM
+    confirm: true
+    dangerous: true
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          virtctl restart $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          echo "virtctl required for restart. Install: https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/"
+        fi
+  virtctl-pause:
+    shortCut: Shift-P
+    description: Pause VM
+    confirm: true
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          virtctl pause vm $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          echo "virtctl required for pause. Install: https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/"
+        fi
+  virtctl-unpause:
+    shortCut: Shift-Q
+    description: Unpause VM
+    confirm: true
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          virtctl unpause vm $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          echo "virtctl required for unpause. Install: https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/"
+        fi
+  virtctl-ssh:
+    shortCut: Shift-Y
+    description: SSH into VM
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          user="${VIRTCTL_SSH_USER:-root}"
+          echo "Connecting as $user (set VIRTCTL_SSH_USER to change)..."
+          virtctl ssh ${user}@vmi/${NAME} -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          echo "Install virtctl: https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/"
+          echo "  virtctl ssh root@vmi/$NAME -n ${NAMESPACE:-default}"
+        fi
+  virtctl-migrate:
+    shortCut: m
+    description: Live-migrate VM
+    confirm: true
+    dangerous: true
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: virtctl
+    background: false
+    args:
+      - migrate
+      - $NAME
+      - -n
+      - $NAMESPACE
+      - --context
+      - $CONTEXT
+  virtctl-guestosinfo:
+    shortCut: Shift-I
+    description: Guest OS info (needs agent)
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          echo "=== Guest OS Info ==="
+          virtctl guestosinfo $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG 2>&1
+          echo ""
+          echo "=== Filesystem List ==="
+          virtctl fslist $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG 2>&1
+          echo ""
+          echo "=== Logged-in Users ==="
+          virtctl userlist $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG 2>&1
+        else
+          echo "virtctl required for guest agent queries."
+          echo "Install: https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/"
+        fi

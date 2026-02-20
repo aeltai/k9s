@@ -23,6 +23,7 @@ aliases:
   # Storage / Harvester
   vol: volumes.longhorn.io
   vm: virtualmachines.kubevirt.io
+  vmi: virtualmachineinstances.kubevirt.io
   # Kubewarden
   cap: clusteradmissionpolicies.policies.kubewarden.io
   ap: admissionpolicies.policies.kubewarden.io

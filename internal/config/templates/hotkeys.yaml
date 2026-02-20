@@ -6,7 +6,9 @@
 # RANCHER:  Shift-O UI | Shift-F Fleet UI | Shift-K sync kubeconfig | Shift-J projects | Shift-U clusters
 # FLEET:    Shift-G GitRepo status | Shift-R reconcile | Shift-T bundle target
 # LONGHORN: Shift-L Longhorn UI | Shift-V volume YAML | Shift-T trim
-# HARVESTER: Shift-H UI | Shift-S VM shell | Shift-V VNC
+# HARVESTER: Shift-H UI
+# VIRTCTL:   Shift-S console | Shift-V VNC | Shift-W start | Shift-X stop | Shift-Z restart
+#            Shift-P pause | Shift-Q unpause | Shift-Y SSH | Shift-I guest info | m migrate
 # KUBEWARDEN: Shift-K policies | Shift-I inspect | Shift-S scaffold
 # INGRESS:   Shift-I Traefik/NGINX describe
 #

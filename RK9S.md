@@ -22,14 +22,14 @@ rk9s calls external CLIs when available; otherwise it falls back to kubectl or s
 |-------------|-------------|----------|------|
 | **Rancher** | rancher CLI | kubectl (projects, clusters CRs) | kubeconfig + API token |
 | **Longhorn** | longhornctl | kubectl (Volume CRs) | KUBECONFIG |
-| **Harvester** | virtctl, harvester-cli | kubectl | KUBECONFIG |
+| **Harvester / KubeVirt** | virtctl, harvester-cli | kubectl patch VM | KUBECONFIG |
 | **Fleet** | fleet | kubectl (GitRepo, Bundle CRs) | KUBECONFIG |
 | **Kubewarden** | kwctl | kubectl (Policy CRs) | KUBECONFIG |
 | **RKE2/K3s** | kubectl debug | – | KUBECONFIG |
 
 - **rancher CLI** – `rancher login`, `rancher context switch`, `rancher cluster ls`. Needs Rancher API token in `~/.rancher/cli2.json` or kubeconfig.
 - **longhornctl** – [Releases](https://github.com/longhorn/cli/releases). Uses `--kubeconfig $KUBECONFIG`.
-- **virtctl** – KubeVirt CLI for VM console/VNC. Same kubeconfig as the cluster.
+- **virtctl** – KubeVirt CLI for full VM lifecycle: console, VNC, start, stop, restart, pause, unpause, SSH, migrate, guest agent queries. Same kubeconfig as the cluster. Install via `https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/`.
 - **kwctl** – Kubewarden policy tool. Inspects policies from registry.
 - **fleet** – Rancher Fleet CLI. Uses kubeconfig for GitOps operations.
 
@@ -135,11 +135,23 @@ Select one or more contexts; `$CONTEXTS` is then available to plugins (comma-sep
 | **Shift-B** | Volume snapshots | longhornctl / kubectl |
 | **Shift-N** | Longhorn node info | longhornctl / kubectl |
 
-### Harvester / KubeVirt
+### Harvester / KubeVirt (VMs)
+
+Alias: `:vm` for VirtualMachine, `:vmi` for VirtualMachineInstance.
+
 | Shortcut | Action | CLI |
 |----------|--------|-----|
-| **Shift-S** | VM shell | virtctl / harvester |
-| **Shift-V** | VM VNC console | virtctl |
+| **Shift-H** | Open Harvester UI | browser |
+| **Shift-S** | Serial console | virtctl console |
+| **Shift-V** | VNC console | virtctl vnc |
+| **Shift-W** | Start VM | virtctl start / kubectl patch |
+| **Shift-X** | Stop VM (confirm) | virtctl stop / kubectl patch |
+| **Shift-Z** | Restart VM (confirm) | virtctl restart |
+| **Shift-P** | Pause VM | virtctl pause |
+| **Shift-Q** | Unpause VM | virtctl unpause |
+| **m** | Live-migrate VM (confirm) | virtctl migrate |
+| **Shift-Y** | SSH into VM | virtctl ssh |
+| **Shift-I** | Guest agent info (OS, FS, users) | virtctl guestosinfo/fslist/userlist |
 
 ### Kubewarden
 | Shortcut | Action | CLI |
@@ -177,9 +189,41 @@ Select one or more contexts; `$CONTEXTS` is then available to plugins (comma-sep
 
 ### How to: Open a VM console in Harvester
 
-1. Go to VirtualMachines (`:vm` or virtualmachines.kubevirt.io).
+1. Go to VirtualMachines (`:vm`) or VirtualMachineInstances (`:vmi`).
 2. Select a VM.
-3. **Shift-S** for shell (virtctl console) or **Shift-V** for VNC.
+3. **Shift-S** for serial console or **Shift-V** for VNC.
+
+### How to: Manage VM lifecycle (start/stop/restart)
+
+1. Go to VirtualMachines (`:vm`).
+2. Select a VM.
+3. **Shift-W** to start, **Shift-X** to stop, **Shift-Z** to restart (all with confirmation).
+4. Requires `virtctl`; falls back to `kubectl patch` for start/stop.
+
+### How to: Pause and unpause a VM
+
+1. Go to VirtualMachines (`:vm`) or VMIs (`:vmi`).
+2. Select a VM.
+3. **Shift-P** to pause (freeze), **Shift-Q** to unpause.
+
+### How to: SSH into a VM
+
+1. Go to VirtualMachines (`:vm`) or VMIs (`:vmi`).
+2. Select a VM.
+3. **Shift-Y** connects via `virtctl ssh` as `root`.
+4. Set `VIRTCTL_SSH_USER=fedora` (or your user) to change the login user.
+
+### How to: Live-migrate a VM
+
+1. Go to VirtualMachines (`:vm`) or VMIs (`:vmi`).
+2. Select the VM.
+3. **m** triggers `virtctl migrate` (with confirmation).
+
+### How to: Query VM guest agent info
+
+1. Go to VirtualMachines (`:vm`) or VMIs (`:vmi`).
+2. Select a VM with qemu-guest-agent installed.
+3. **Shift-I** shows OS info, filesystems, and logged-in users.
 
 ### How to: Inspect a Kubewarden policy
 
@@ -194,7 +238,7 @@ Create `~/.config/rk9s/plugins.yaml` or add YAML in `~/.local/share/rk9s/plugins
 ```yaml
 plugins:
   my-plugin:
-    shortCut: Shift-X
+    shortCut: Shift-2
     description: My custom action
     scopes: [pods]
     command: echo
