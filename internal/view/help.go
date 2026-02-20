@@ -151,49 +151,47 @@ func (h *Help) build() {
 }
 
 // showRk9s returns rk9s plugin shortcuts for the Help legend.
+// Each entry notes the view where the shortcut is active.
 func (h *Help) showRk9s() model.MenuHints {
 	return model.MenuHints{
-		// -- Rancher --
-		{Mnemonic: "Shift-O", Description: "Cluster overview (rancher)"},
-		{Mnemonic: "Shift-F", Description: "Fleet status overview"},
-		{Mnemonic: "Shift-J", Description: "Projects & namespaces"},
-		{Mnemonic: "Shift-U", Description: "All clusters (rancher)"},
-		{Mnemonic: "Shift-K", Description: "Generate kubeconfig"},
-		// -- Longhorn --
-		{Mnemonic: "Shift-L", Description: "Longhorn preflight check"},
-		{Mnemonic: "Shift-R", Description: "Replicas / reconcile"},
-		{Mnemonic: "Shift-T", Description: "Trim vol / bundle targets"},
-		{Mnemonic: "Shift-B", Description: "Longhorn snapshots"},
-		// -- Harvester / KubeVirt --
-		{Mnemonic: "Shift-H", Description: "VM overview (harvester)"},
-		{Mnemonic: "Shift-S", Description: "VM console (virtctl)"},
-		{Mnemonic: "Shift-V", Description: "VM VNC (virtctl)"},
-		{Mnemonic: "Shift-W", Description: "VM start"},
-		{Mnemonic: "Shift-X", Description: "VM stop"},
-		{Mnemonic: "Shift-Z", Description: "VM restart"},
-		{Mnemonic: "Shift-P", Description: "Pause VM / crictl ps"},
-		{Mnemonic: "Shift-Q", Description: "Unpause VM"},
-		{Mnemonic: "Shift-Y", Description: "VM SSH (virtctl)"},
-		{Mnemonic: "Shift-I", Description: "Guest info / kwctl inspect"},
-		{Mnemonic: "m", Description: "VM live migrate"},
-		// -- Nodes --
-		{Mnemonic: "Shift-C", Description: "RKE2/K3s config (node)"},
-		{Mnemonic: "Shift-D", Description: "Node services (systemd)"},
-		{Mnemonic: "Shift-E", Description: "etcdctl health (node)"},
-		{Mnemonic: "Shift-G", Description: "GitRepo / Longhorn node"},
-		// -- Multi-context --
-		{Mnemonic: "Shift-M", Description: "All Nodes (multi-ctx)"},
-		{Mnemonic: "Shift-P", Description: "All Pods (multi-ctx)"},
-		{Mnemonic: "Space", Description: "Toggle context select"},
-		{Mnemonic: "Ctrl-A", Description: "Select all contexts"},
-		// -- Hotkey navigation --
-		{Mnemonic: "Shift-1", Description: "→ Longhorn Volumes"},
-		{Mnemonic: "Shift-2", Description: "→ Longhorn Nodes"},
-		{Mnemonic: "Shift-3", Description: "→ VMs (KubeVirt)"},
-		{Mnemonic: "Shift-4", Description: "→ Fleet GitRepos"},
-		{Mnemonic: "Shift-5", Description: "→ Fleet Clusters"},
-		{Mnemonic: "Shift-6", Description: "→ Rancher Clusters"},
-		{Mnemonic: "Shift-7", Description: "→ Rancher Projects"},
+		// -- Dashboards (global) --
+		{Mnemonic: "Shift-1", Description: "Longhorn Dashboard"},
+		{Mnemonic: "Shift-2", Description: "Fleet Dashboard"},
+		{Mnemonic: "Shift-3", Description: "Rancher Dashboard"},
+		{Mnemonic: "Shift-4", Description: "Harvester Dashboard"},
+		{Mnemonic: "Shift-5", Description: "Nodes Dashboard"},
+		{Mnemonic: ":rk9s", Description: "Status & CLI check"},
+		// -- Multi-context [contexts view] --
+		{Mnemonic: "Shift-M", Description: "All Nodes [contexts]"},
+		{Mnemonic: "Shift-P", Description: "All Pods [contexts]"},
+		{Mnemonic: "Space", Description: "Toggle select [contexts]"},
+		{Mnemonic: "Ctrl-A", Description: "Select all [contexts]"},
+		// -- Rancher [clusters.mgmt.cattle.io] --
+		{Mnemonic: "Shift-O", Description: "Cluster overview [rancher]"},
+		{Mnemonic: "Shift-U", Description: "All clusters [rancher/ctx]"},
+		{Mnemonic: "Shift-J", Description: "Projects [rancher]"},
+		{Mnemonic: "Shift-K", Description: "Gen kubeconfig [rancher/ctx]"},
+		{Mnemonic: "Shift-F", Description: "Fleet status [fleet CRDs]"},
+		// -- Fleet [gitrepos/bundles] --
+		{Mnemonic: "Shift-G", Description: "GitRepo status [gitrepos]"},
+		{Mnemonic: "Shift-R", Description: "Reconcile [gitrepos/volumes]"},
+		{Mnemonic: "Shift-T", Description: "Targets/Trim [bundles/volumes]"},
+		// -- Longhorn [volumes.longhorn.io] --
+		{Mnemonic: "Shift-L", Description: "Preflight [volumes.longhorn]"},
+		{Mnemonic: "Shift-B", Description: "Snapshots [volumes.longhorn]"},
+		// -- KubeVirt [vm/vmi] --
+		{Mnemonic: "Shift-H", Description: "VM overview [vm]"},
+		{Mnemonic: "Shift-S", Description: "Console [vm/vmi]"},
+		{Mnemonic: "Shift-W", Description: "Start VM [vm]"},
+		{Mnemonic: "Shift-X", Description: "Stop VM [vm/vmi]"},
+		{Mnemonic: "Shift-Z", Description: "Restart [vm/vmi]"},
+		{Mnemonic: "Shift-Y", Description: "SSH [vm/vmi]"},
+		{Mnemonic: "m", Description: "Live migrate [vm/vmi]"},
+		// -- Nodes [nodes] --
+		{Mnemonic: "Shift-C", Description: "RKE2/K3s config [nodes]"},
+		{Mnemonic: "Shift-D", Description: "Services [nodes]"},
+		{Mnemonic: "Shift-E", Description: "etcdctl [nodes]"},
+		{Mnemonic: "Shift-P", Description: "crictl ps [nodes]"},
 	}
 }
 

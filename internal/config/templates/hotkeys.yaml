@@ -1,50 +1,34 @@
-# rk9s hotkeys – quick navigation to SUSE/Rancher views
-# These are auto-synced by rk9s on startup. Press ? to see all shortcuts.
+# rk9s hotkeys – dashboard views & quick navigation
+# Auto-synced by rk9s on startup. Press ? to see all shortcuts.
 #
-# NAVIGATION HOTKEYS (jump to view from anywhere):
-#   Shift-1  Longhorn Volumes
-#   Shift-2  Longhorn Nodes
-#   Shift-3  KubeVirt VMs
-#   Shift-4  Fleet GitRepos
-#   Shift-5  Fleet Clusters
-#   Shift-6  Rancher Clusters
-#   Shift-7  Rancher Projects
+# DASHBOARDS (from anywhere):
+#   Shift-1  Longhorn Dashboard   (volumes, nodes, replicas, settings)
+#   Shift-2  Fleet Dashboard      (gitrepos, clusters, bundles)
+#   Shift-3  Rancher Dashboard    (clusters, projects, users)
+#   Shift-4  Harvester Dashboard  (VMs, VMIs, datavolumes, networks)
+#   Shift-5  Nodes Dashboard      (nodes, conditions, resources, taints)
 #
-# MULTI-CONTEXT (from :contexts view):
-#   Space    Toggle context selection
-#   Ctrl-A   Select all contexts
-#   Shift-M  Show nodes across all selected contexts (with CLUSTER column)
-#   Shift-P  Show pods across all selected contexts (with CLUSTER column)
-#
-# PLUGIN SHORTCUTS (active on matching resource views):
-#   See ? Help → RK9S section for the full list
+# You can also type these as commands:
+#   :longhorn  :fleet  :rancher  :harvester  :nodes-info  :rk9s
 #
 hotKeys:
-  rk9s-longhorn-volumes:
+  rk9s-longhorn:
     shortCut: Shift-1
-    description: Longhorn Volumes
-    command: volumes.longhorn.io
-  rk9s-longhorn-nodes:
+    description: Longhorn Dashboard
+    command: longhorn
+  rk9s-fleet:
     shortCut: Shift-2
-    description: Longhorn Nodes
-    command: nodes.longhorn.io
-  rk9s-harvester-vms:
+    description: Fleet Dashboard
+    command: fleet
+  rk9s-rancher:
     shortCut: Shift-3
-    description: VMs (KubeVirt)
-    command: virtualmachines.kubevirt.io
-  rk9s-fleet-gitrepos:
+    description: Rancher Dashboard
+    command: rancher
+  rk9s-harvester:
     shortCut: Shift-4
-    description: Fleet GitRepos
-    command: gitrepos.fleet.cattle.io
-  rk9s-fleet-clusters:
+    description: Harvester Dashboard
+    command: harvester
+  rk9s-nodes-info:
     shortCut: Shift-5
-    description: Fleet Clusters
-    command: clusters.fleet.cattle.io
-  rk9s-rancher-clusters:
-    shortCut: Shift-6
-    description: Rancher Clusters
-    command: clusters.management.cattle.io
-  rk9s-rancher-projects:
-    shortCut: Shift-7
-    description: Rancher Projects
-    command: projects.management.cattle.io
+    description: Nodes Dashboard
+    command: nodes-info

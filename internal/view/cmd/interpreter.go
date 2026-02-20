@@ -210,6 +210,16 @@ func (c *Interpreter) IsRk9sCmd() bool {
 	return rk9sCmd.Has(c.cmd)
 }
 
+// IsRk9sDashCmd returns true if a dashboard cmd is detected.
+func (c *Interpreter) IsRk9sDashCmd() bool {
+	return rk9sDashCmd.Has(c.cmd)
+}
+
+// Rk9sDashArg returns the dashboard command name.
+func (c *Interpreter) Rk9sDashArg() string {
+	return c.cmd
+}
+
 // IsRBACCmd returns true if rbac cmd is detected.
 func (c *Interpreter) IsRBACCmd() bool {
 	return c.cmd == canCmd

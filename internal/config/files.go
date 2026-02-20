@@ -354,13 +354,11 @@ func EnsureDefaultHotkeys() error {
 		return nil
 	}
 	rk9sHotkeys := map[string]HotKey{
-		"rk9s-longhorn-volumes": {ShortCut: "Shift-1", Description: "Longhorn Volumes", Command: "volumes.longhorn.io"},
-		"rk9s-longhorn-nodes":   {ShortCut: "Shift-2", Description: "Longhorn Nodes", Command: "nodes.longhorn.io"},
-		"rk9s-harvester-vms":    {ShortCut: "Shift-3", Description: "VMs (KubeVirt)", Command: "virtualmachines.kubevirt.io"},
-		"rk9s-fleet-gitrepos":   {ShortCut: "Shift-4", Description: "Fleet GitRepos", Command: "gitrepos.fleet.cattle.io"},
-		"rk9s-fleet-clusters":   {ShortCut: "Shift-5", Description: "Fleet Clusters", Command: "clusters.fleet.cattle.io"},
-		"rk9s-rancher-clusters": {ShortCut: "Shift-6", Description: "Rancher Clusters", Command: "clusters.management.cattle.io"},
-		"rk9s-rancher-projects": {ShortCut: "Shift-7", Description: "Rancher Projects", Command: "projects.management.cattle.io"},
+		"rk9s-longhorn":   {ShortCut: "Shift-1", Description: "Longhorn Dashboard", Command: "longhorn"},
+		"rk9s-fleet":      {ShortCut: "Shift-2", Description: "Fleet Dashboard", Command: "fleet"},
+		"rk9s-rancher":    {ShortCut: "Shift-3", Description: "Rancher Dashboard", Command: "rancher"},
+		"rk9s-harvester":  {ShortCut: "Shift-4", Description: "Harvester Dashboard", Command: "harvester"},
+		"rk9s-nodes-info": {ShortCut: "Shift-5", Description: "Nodes Dashboard", Command: "nodes-info"},
 	}
 
 	existing := NewHotKeys()

@@ -78,4 +78,11 @@ var (
 		"rk9s",
 		"status",
 	)
+	rk9sDashCmd = sets.New(
+		"longhorn",
+		"fleet",
+		"rancher",
+		"harvester",
+		"nodes-info",
+	)
 )

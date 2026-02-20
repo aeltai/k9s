@@ -307,6 +307,8 @@ func (c *Command) specialCmd(p *cmd.Interpreter, pushCmd bool) bool {
 		}
 	case p.IsRk9sCmd():
 		c.app.rk9sCmd()
+	case p.IsRk9sDashCmd():
+		c.app.rk9sDashboard(p.Rk9sDashArg())
 	default:
 		return false
 	}

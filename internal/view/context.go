@@ -4,6 +4,7 @@
 package view
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -114,24 +115,27 @@ func (c *Context) selectNoneCtx(evt *tcell.EventKey) *tcell.EventKey {
 	return nil
 }
 
-func (c *Context) runMcCmd(sel []string, kubectlArgs []string) {
+func (c *Context) runMcView(sel []string, title string, kubectlArgs []string) {
+	c.App().Flash().Infof("Fetching %s across %d contexts...", title, len(sel))
 	script := mcParallelScript(sel, kubectlArgs)
-	opts := shellOpts{
-		binary:     "bash",
-		background: false,
-		args:       []string{"-c", script},
-	}
-	suspend, errChan, _ := run(c.App(), &opts)
-	if !suspend {
-		c.App().Flash().Err(fmt.Errorf("failed to run multi-context command"))
-		return
-	}
 	go func() {
-		for e := range errChan {
-			if e != nil && !strings.Contains(e.Error(), "signal: interrupt") {
-				slog.Warn("Multi-context command error", slogs.Error, e)
-			}
+		out, err := oneShoot(context.Background(), &shellOpts{
+			binary: "bash",
+			args:   []string{"-c", script},
+		})
+		if err != nil {
+			c.App().QueueUpdateDraw(func() {
+				c.App().Flash().Errf("Multi-context command failed: %s", err)
+			})
+			return
 		}
+		c.App().QueueUpdateDraw(func() {
+			details := NewDetails(c.App(), title, strings.Join(sel, ", "), contentTXT, true).
+				Update(out)
+			if e := c.App().inject(details, false); e != nil {
+				c.App().Flash().Err(e)
+			}
+		})
 	}()
 }
 
@@ -141,7 +145,7 @@ func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
 		c.App().Flash().Warn("No contexts selected. Use Space to select contexts first.")
 		return nil
 	}
-	c.runMcCmd(sel, []string{"get", "nodes", "-o", "wide"})
+	c.runMcView(sel, "Nodes", []string{"get", "nodes", "-o", "wide"})
 	return nil
 }
 
@@ -151,21 +155,17 @@ func (c *Context) showSelectedPods(evt *tcell.EventKey) *tcell.EventKey {
 		c.App().Flash().Warn("No contexts selected. Use Space to select contexts first.")
 		return nil
 	}
-	c.runMcCmd(sel, []string{"get", "pods", "-A", "--sort-by=.metadata.namespace"})
+	c.runMcView(sel, "Pods", []string{"get", "pods", "-A", "--sort-by=.metadata.namespace"})
 	return nil
 }
 
 // mcParallelScript generates a bash script that runs kubectl across contexts
 // in parallel, merges output into a single table with a CLUSTER column.
-// Inspired by kubectl-mc.
 func mcParallelScript(contexts []string, kubectlArgs []string) string {
 	args := strings.Join(kubectlArgs, " ")
 	var b strings.Builder
-	// Wrap in subshell so we can pipe the whole thing to less
-	b.WriteString("(\n")
 	b.WriteString("_tmpdir=$(mktemp -d)\n")
 	b.WriteString("trap 'rm -rf \"$_tmpdir\"' EXIT\n")
-	b.WriteString(fmt.Sprintf("echo '=== rk9s: %s across %d contexts ==='\necho ''\n", args, len(contexts)))
 	for _, ctx := range contexts {
 		b.WriteString(fmt.Sprintf(
 			"(kubectl %s --context %s 2>&1 > \"$_tmpdir/%s\" || echo '(unreachable)' > \"$_tmpdir/%s\") &\n",
@@ -188,7 +188,6 @@ func mcParallelScript(contexts []string, kubectlArgs []string) string {
 	b.WriteString("    fi\n")
 	b.WriteString("  done < \"$_tmpdir/$_ctx\"\n")
 	b.WriteString("done\n")
-	b.WriteString(") | less -K\n")
 	return b.String()
 }
 

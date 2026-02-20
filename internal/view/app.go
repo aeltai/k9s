@@ -727,43 +727,35 @@ func pluginDir(appName string) string {
 	return dir
 }
 
+func (a *App) runDashScript(title, subject, script string) {
+	a.Flash().Infof("Loading %s dashboard...", title)
+	go func() {
+		out, err := oneShoot(context.Background(), &shellOpts{
+			binary: "bash",
+			args:   []string{"-c", script},
+		})
+		if err != nil {
+			out = fmt.Sprintf("Error: %s\n\n%s", err, out)
+		}
+		a.QueueUpdateDraw(func() {
+			details := NewDetails(a, title, subject, contentTXT, true).Update(out)
+			if e := a.inject(details, false); e != nil {
+				a.Flash().Err(e)
+			}
+		})
+	}()
+}
+
 func (a *App) rk9sCmd() {
 	sel, _ := config.LoadSelectedContexts()
-	var nodeBlock string
+	ctxInfo := "(none) — use :contexts then Space to select"
 	if len(sel) > 0 {
-		ctxList := strings.Join(sel, " ")
-		nodeBlock = fmt.Sprintf(`
-echo '=== Selected Contexts ==='
-for ctx in %s; do printf '  [+] %%s\n' "$ctx"; done
-echo ''
-echo '=== Nodes across selected contexts (parallel) ==='
-_tmpdir=$(mktemp -d)
-trap 'rm -rf "$_tmpdir"' EXIT
-for ctx in %s; do
-  (kubectl get nodes --context "$ctx" -o wide 2>&1 > "$_tmpdir/$ctx" || echo "(unreachable)" > "$_tmpdir/$ctx") &
-done
-wait
-_header_done=false
-for ctx in %s; do
-  while IFS= read -r _line || [ -n "$_line" ]; do
-    if [ "$_header_done" = false ] && echo "$_line" | grep -qE '^NAME'; then
-      printf '%%-25s %%s\n' 'CLUSTER' "$_line"
-      _header_done=true
-    elif ! echo "$_line" | grep -qE '^NAME'; then
-      [ -n "$_line" ] && printf '%%-25s %%s\n' "$ctx" "$_line"
-    fi
-  done < "$_tmpdir/$ctx"
-done`, ctxList, ctxList, ctxList)
-	} else {
-		nodeBlock = `
-echo '=== Selected Contexts ==='
-echo '  (none) Use :contexts, then Space to select'`
+		ctxInfo = strings.Join(sel, ", ")
 	}
-
-	script := fmt.Sprintf(`(
-echo '╔══════════════════════════════════════════════╗'
-echo '║            rk9s status                        ║'
-echo '╚══════════════════════════════════════════════╝'
+	script := fmt.Sprintf(`
+echo '╔══════════════════════════════════════════════════╗'
+echo '║              rk9s status                          ║'
+echo '╚══════════════════════════════════════════════════╝'
 echo ''
 echo '=== CLI Availability ==='
 for cli in rancher virtctl longhornctl kwctl fleet harvester kubectl; do
@@ -775,7 +767,6 @@ for cli in rancher virtctl longhornctl kwctl fleet harvester kubectl; do
     printf '  %%-14s ✗  not found\n' "$cli"
   fi
 done
-%s
 echo ''
 echo '=== Plugin Directory ==='
 pdir="%s"
@@ -786,30 +777,151 @@ else
   echo '  (not found)'
 fi
 echo ''
-echo '=== Quick Navigation ==='
-echo '  Shift-1  Longhorn Volumes    Shift-5  Fleet Clusters'
-echo '  Shift-2  Longhorn Nodes      Shift-6  Rancher Clusters'
-echo '  Shift-3  KubeVirt VMs        Shift-7  Rancher Projects'
-echo '  Shift-4  Fleet GitRepos      ?        Full Help'
-) | less -K`, nodeBlock, pluginDir(config.AppName))
+echo '=== Dashboards (type command to open) ==='
+echo '  :longhorn     Longhorn storage dashboard'
+echo '  :fleet        Fleet continuous delivery dashboard'
+echo '  :rancher      Rancher management dashboard'
+echo '  :harvester    KubeVirt / Harvester VM dashboard'
+echo '  :nodes-info   Node infrastructure dashboard'
+echo ''
+echo '=== Navigation Hotkeys ==='
+echo '  Shift-1  → Longhorn Volumes    Shift-5  → Fleet Clusters'
+echo '  Shift-2  → Longhorn Nodes      Shift-6  → Rancher Clusters'
+echo '  Shift-3  → KubeVirt VMs        Shift-7  → Rancher Projects'
+echo '  Shift-4  → Fleet GitRepos      ?          Full Help'
+echo ''
+echo '=== Multi-Context (from :contexts view) ==='
+echo '  Space    Toggle context selection'
+echo '  Ctrl-A   Select all contexts'
+echo '  Shift-M  All Nodes across selected contexts'
+echo '  Shift-P  All Pods across selected contexts'
+`, pluginDir(config.AppName))
+	a.runDashScript("rk9s", ctxInfo, script)
+}
 
-	opts := shellOpts{
-		binary:     "bash",
-		background: false,
-		args:       []string{"-c", script},
+func (a *App) rk9sDashboard(name string) {
+	ctx := a.Config.K9s.ActiveContextName()
+	switch name {
+	case "longhorn":
+		a.runDashScript("Longhorn", ctx, fmt.Sprintf(`
+echo '=== Longhorn Storage Dashboard ==='
+echo 'Context: %s'
+echo ''
+echo '--- Volumes ---'
+kubectl get volumes.longhorn.io -n longhorn-system --context %s -o custom-columns='NAME:.metadata.name,STATE:.status.state,ROBUSTNESS:.status.robustness,SIZE:.spec.size,REPLICAS:.spec.numberOfReplicas,NODE:.status.currentNodeID' 2>/dev/null || echo '  (Longhorn not installed or no volumes found)'
+echo ''
+echo '--- Nodes ---'
+kubectl get nodes.longhorn.io -n longhorn-system --context %s -o custom-columns='NAME:.metadata.name,READY:.status.conditions.Ready.status,SCHEDULABLE:.spec.allowScheduling,STORAGE:.status.diskStatus' 2>/dev/null || echo '  (no Longhorn nodes)'
+echo ''
+echo '--- Engine Images ---'
+kubectl get engineimages.longhorn.io -n longhorn-system --context %s -o wide 2>/dev/null || echo '  (none)'
+echo ''
+echo '--- Replicas ---'
+kubectl get replicas.longhorn.io -n longhorn-system --context %s -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,NODE:.spec.nodeID,RUNNING:.status.currentState' 2>/dev/null | head -30 || echo '  (none)'
+echo ''
+echo '--- Settings ---'
+kubectl get settings.longhorn.io -n longhorn-system --context %s -o custom-columns='NAME:.metadata.name,VALUE:.value' 2>/dev/null | head -20 || echo '  (none)'
+echo ''
+echo 'Plugin shortcuts (navigate to volumes.longhorn.io view):'
+echo '  Shift-L  Preflight check     Shift-R  Replica info'
+echo '  Shift-T  Trim volume         Shift-B  Snapshots'
+echo '  Shift-S  Volume YAML'
+`, ctx, ctx, ctx, ctx, ctx, ctx))
+
+	case "fleet":
+		a.runDashScript("Fleet", ctx, fmt.Sprintf(`
+echo '=== Fleet Continuous Delivery Dashboard ==='
+echo 'Context: %s'
+echo ''
+echo '--- GitRepos ---'
+kubectl get gitrepos.fleet.cattle.io -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPO:.spec.repo,BRANCH:.spec.branch,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady,STATE:.status.display.state' 2>/dev/null || echo '  (Fleet not installed or no GitRepos)'
+echo ''
+echo '--- Fleet Clusters ---'
+kubectl get clusters.fleet.cattle.io -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.readyBundles,STATE:.status.display.state' 2>/dev/null || echo '  (none)'
+echo ''
+echo '--- Bundles ---'
+kubectl get bundles.fleet.cattle.io -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' 2>/dev/null | head -30 || echo '  (none)'
+echo ''
+echo '--- ClusterGroups ---'
+kubectl get clustergroups.fleet.cattle.io -A --context %s -o wide 2>/dev/null || echo '  (none)'
+echo ''
+echo 'Plugin shortcuts (navigate to gitrepos.fleet.cattle.io view):'
+echo '  Shift-G  GitRepo status      Shift-R  Force reconcile'
+echo '  Shift-T  Bundle targets       Shift-C  Cluster registration'
+`, ctx, ctx, ctx, ctx, ctx))
+
+	case "rancher":
+		a.runDashScript("Rancher", ctx, fmt.Sprintf(`
+echo '=== Rancher Management Dashboard ==='
+echo 'Context: %s'
+echo ''
+echo '--- Managed Clusters ---'
+kubectl get clusters.management.cattle.io --context %s -o custom-columns='NAME:.metadata.name,DISPLAY:.spec.displayName,PROVIDER:.status.provider,K8S:.status.version.gitVersion,READY:.status.conditions[?(@.type=="Ready")].status' 2>/dev/null || echo '  (Rancher management CRDs not found)'
+echo ''
+echo '--- Projects ---'
+kubectl get projects.management.cattle.io -A --context %s -o custom-columns='CLUSTER:.metadata.namespace,NAME:.metadata.name,DISPLAY:.spec.displayName' 2>/dev/null | head -20 || echo '  (none)'
+echo ''
+echo '--- Users ---'
+kubectl get users.management.cattle.io --context %s -o custom-columns='NAME:.metadata.name,USERNAME:.username,DISPLAY:.displayName' 2>/dev/null | head -15 || echo '  (none)'
+echo ''
+echo '--- Settings ---'
+kubectl get settings.management.cattle.io --context %s -o custom-columns='NAME:.metadata.name,VALUE:.value' 2>/dev/null | grep -E 'NAME|server-url|server-version|ui-' | head -10 || echo '  (none)'
+echo ''
+echo 'Plugin shortcuts (navigate to clusters.management.cattle.io view):'
+echo '  Shift-O  Cluster overview     Shift-U  All clusters'
+echo '  Shift-J  Projects             Shift-K  Generate kubeconfig'
+echo '  Shift-F  Fleet status'
+`, ctx, ctx, ctx, ctx, ctx))
+
+	case "harvester":
+		a.runDashScript("Harvester", ctx, fmt.Sprintf(`
+echo '=== Harvester / KubeVirt VM Dashboard ==='
+echo 'Context: %s'
+echo ''
+echo '--- Virtual Machines ---'
+kubectl get vm -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,RUNNING:.spec.running,AGE:.metadata.creationTimestamp' 2>/dev/null || echo '  (KubeVirt not installed or no VMs)'
+echo ''
+echo '--- VM Instances (running) ---'
+kubectl get vmi -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,NODE:.status.nodeName,IP:.status.interfaces[0].ipAddress' 2>/dev/null || echo '  (none running)'
+echo ''
+echo '--- DataVolumes ---'
+kubectl get dv -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress' 2>/dev/null || echo '  (none)'
+echo ''
+echo '--- VM Networks ---'
+kubectl get net-attach-def -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' 2>/dev/null || echo '  (none)'
+echo ''
+echo 'Plugin shortcuts (navigate to virtualmachines.kubevirt.io view):'
+echo '  Shift-H  VM overview          Shift-S  Console (virtctl)'
+echo '  Shift-V  VNC                  Shift-W  Start VM'
+echo '  Shift-X  Stop VM              Shift-Z  Restart VM'
+echo '  Shift-P  Pause                Shift-Q  Unpause'
+echo '  Shift-Y  SSH                  Shift-I  Guest OS info'
+echo '  m        Live migrate'
+`, ctx, ctx, ctx, ctx, ctx))
+
+	case "nodes-info":
+		a.runDashScript("Nodes", ctx, fmt.Sprintf(`
+echo '=== Node Infrastructure Dashboard ==='
+echo 'Context: %s'
+echo ''
+echo '--- Nodes ---'
+kubectl get nodes --context %s -o wide 2>/dev/null || echo '  (no nodes)'
+echo ''
+echo '--- Node Conditions ---'
+kubectl get nodes --context %s -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,DISK:.status.conditions[?(@.type=="DiskPressure")].status,MEM:.status.conditions[?(@.type=="MemoryPressure")].status,PID:.status.conditions[?(@.type=="PIDPressure")].status' 2>/dev/null
+echo ''
+echo '--- Node Resources ---'
+kubectl top nodes --context %s 2>/dev/null || echo '  (metrics-server not available)'
+echo ''
+echo '--- Taints ---'
+kubectl get nodes --context %s -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints[*].key' 2>/dev/null
+echo ''
+echo 'Plugin shortcuts (navigate to nodes view):'
+echo '  Shift-C  RKE2/K3s config     Shift-D  Node services (systemd)'
+echo '  Shift-P  crictl ps            Shift-E  etcdctl health'
+echo '  Shift-G  Longhorn node info'
+`, ctx, ctx, ctx, ctx, ctx))
 	}
-	suspend, errChan, _ := run(a, &opts)
-	if !suspend {
-		a.Flash().Err(fmt.Errorf("failed to run rk9s status"))
-		return
-	}
-	go func() {
-		for e := range errChan {
-			if e != nil && !strings.Contains(e.Error(), "signal: interrupt") {
-				slog.Warn("rk9s status error", slogs.Error, e)
-			}
-		}
-	}()
 }
 
 func (a *App) dirCmd(path string, pushCmd bool) error {
