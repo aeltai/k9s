@@ -7,7 +7,6 @@ plugins:
     description: Open Longhorn UI (port-forward + browser)
     scopes:
       - volumes.longhorn.io
-      - all
     command: bash
     background: true
     args:
@@ -68,7 +67,7 @@ plugins:
           kubectl get volumes.longhorn.io -n longhorn-system -o jsonpath='{range .items[?(@.metadata.name=="'$NAME'")]}{.status.snapshots}' --context $CONTEXT 2>/dev/null | jq . 2>/dev/null | less -K || echo "Install longhornctl for full snapshot list"
         fi
   longhorn-node-info:
-    shortCut: Shift-N
+    shortCut: Shift-G
     description: Longhorn node info (longhornctl)
     scopes:
       - nodes

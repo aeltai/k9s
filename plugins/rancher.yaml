@@ -1,12 +1,16 @@
 # Rancher plugins for rk9s
 # Uses KUBECONFIG + API tokens from active context
-# For Rancher management API: use context pointing at Rancher server (API token in kubeconfig)
+# Scoped to Rancher/Fleet management CRDs to avoid conflicting with built-in Shift-key bindings
 plugins:
   rancher-open-ui:
     shortCut: Shift-O
     description: Open Rancher UI in browser
     scopes:
-      - all
+      - clusters.management.cattle.io
+      - projects.management.cattle.io
+      - settings.management.cattle.io
+      - users.management.cattle.io
+      - contexts
     command: bash
     background: true
     args:
@@ -22,7 +26,11 @@ plugins:
     shortCut: Shift-F
     description: Open Fleet UI in browser
     scopes:
-      - all
+      - clusters.fleet.cattle.io
+      - gitrepos.fleet.cattle.io
+      - bundles.fleet.cattle.io
+      - bundledeployments.fleet.cattle.io
+      - clustergroups.fleet.cattle.io
     command: bash
     background: true
     args:
@@ -38,7 +46,8 @@ plugins:
     shortCut: Shift-K
     description: Sync kubeconfig from Rancher
     scopes:
-      - all
+      - clusters.management.cattle.io
+      - contexts
     command: rancher
     background: false
     confirm: false
@@ -50,7 +59,8 @@ plugins:
     shortCut: Shift-J
     description: List Rancher projects (management API)
     scopes:
-      - all
+      - clusters.management.cattle.io
+      - projects.management.cattle.io
     command: kubectl
     background: false
     args:
@@ -63,7 +73,8 @@ plugins:
     shortCut: Shift-U
     description: List Rancher clusters (rancher CLI or kubectl)
     scopes:
-      - all
+      - clusters.management.cattle.io
+      - contexts
     command: bash
     background: false
     args:
