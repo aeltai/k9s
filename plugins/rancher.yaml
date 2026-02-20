@@ -1,9 +1,11 @@
 # Rancher plugins for rk9s
 # Uses KUBECONFIG + API tokens from active context
-# Scoped to Rancher/Fleet management CRDs to avoid conflicting with built-in Shift-key bindings
+# Scoped to Rancher/Fleet management CRDs; override=true needed because
+# Shift keys collide with base table sort bindings on every table view
 plugins:
   rancher-open-ui:
     shortCut: Shift-O
+    override: true
     description: Open Rancher UI in browser
     scopes:
       - clusters.management.cattle.io
@@ -24,6 +26,7 @@ plugins:
         fi
   rancher-fleet-ui:
     shortCut: Shift-F
+    override: true
     description: Open Fleet UI in browser
     scopes:
       - clusters.fleet.cattle.io
@@ -44,6 +47,7 @@ plugins:
         fi
   rancher-sync-kubeconfig:
     shortCut: Shift-K
+    override: true
     description: Sync kubeconfig from Rancher
     scopes:
       - clusters.management.cattle.io
@@ -57,6 +61,7 @@ plugins:
       - $CONTEXT
   rancher-projects:
     shortCut: Shift-J
+    override: true
     description: List Rancher projects (management API)
     scopes:
       - clusters.management.cattle.io
@@ -71,6 +76,7 @@ plugins:
       - $CONTEXT
   rancher-clusters:
     shortCut: Shift-U
+    override: true
     description: List Rancher clusters (rancher CLI or kubectl)
     scopes:
       - clusters.management.cattle.io

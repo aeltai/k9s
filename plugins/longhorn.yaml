@@ -43,6 +43,7 @@ plugins:
         kubectl get volume -n longhorn-system $NAME -o yaml --context $CONTEXT | less -K
   longhorn-volume-yaml:
     shortCut: Shift-S
+    override: true
     description: Longhorn Volume YAML + replicas
     scopes:
       - volumes.longhorn.io

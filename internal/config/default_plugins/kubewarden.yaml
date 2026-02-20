@@ -35,6 +35,7 @@ plugins:
         fi
   kwctl-scaffold-manifest:
     shortCut: Shift-S
+    override: true
     description: Scaffold policy manifest (policy URI from CR)
     scopes:
       - clusteradmissionpolicies.policies.kubewarden.io
