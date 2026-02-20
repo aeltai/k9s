@@ -262,6 +262,27 @@ func (a *App) bindKeys() {
 		tcell.KeyEnter:     ui.NewKeyAction("Goto", a.gotoCmd, false),
 		tcell.KeyCtrlC:     ui.NewKeyAction("Quit", a.quitCmd, false),
 	}))
+	a.loadAppHotKeys()
+}
+
+func (a *App) loadAppHotKeys() {
+	hh := config.NewHotKeys()
+	if err := hh.Load(a.Config.ContextHotkeysPath()); err != nil {
+		return
+	}
+	for _, hk := range hh.HotKey {
+		key, err := asKey(hk.ShortCut)
+		if err != nil {
+			continue
+		}
+		command := hk.Command
+		a.AddActions(ui.NewKeyActionsFromMap(ui.KeyMap{
+			key: ui.NewSharedKeyAction(hk.Description, func(*tcell.EventKey) *tcell.EventKey {
+				a.gotoResource(command, "", true, true)
+				return nil
+			}, false),
+		}))
+	}
 }
 
 // ActiveView returns the currently active view.
@@ -777,18 +798,20 @@ else
   echo '  (not found)'
 fi
 echo ''
-echo '=== Dashboards (type command to open) ==='
-echo '  :longhorn     Longhorn storage dashboard'
-echo '  :fleet        Fleet continuous delivery dashboard'
-echo '  :rancher      Rancher management dashboard'
-echo '  :harvester    KubeVirt / Harvester VM dashboard'
-echo '  :etcd         etcd health / members / alarms dashboard'
+echo '=== Quick Navigation (type command to open) ==='
+echo '  :volumes.longhorn.io              Longhorn volumes (interactive)'
+echo '  :gitrepos.fleet.cattle.io         Fleet GitRepos (interactive)'
+echo '  :clusters.management.cattle.io    Rancher clusters (interactive)'
+echo '  :virtualmachines.kubevirt.io      Harvester VMs (interactive)'
+echo '  :etcd                             etcd health / members / alarms'
+echo '  Press Shift-I in any view above for aggregated overview'
 echo ''
 echo '=== Navigation Hotkeys ==='
-echo '  Shift-1  Longhorn Dashboard    Shift-5  Nodes (interactive)'
-echo '  Shift-2  Fleet Dashboard       Shift-6  rk9s Status'
-echo '  Shift-3  Rancher Dashboard     Shift-7  Contexts (multi-select)'
-echo '  Shift-4  Harvester Dashboard   Shift-8  etcd Dashboard'
+echo '  Shift-1  Longhorn Volumes      Shift-5  Nodes'
+echo '  Shift-2  Fleet GitRepos        Shift-6  rk9s Status'
+echo '  Shift-3  Rancher Clusters      Shift-7  Contexts (multi-select)'
+echo '  Shift-4  Harvester VMs         Shift-8  etcd Dashboard'
+echo '  Shift-I  Overview dashboard (in any view above)'
 echo '  ?        Full Help'
 echo ''
 echo '=== Multi-Context (from :contexts view) ==='
@@ -831,161 +854,6 @@ func mcKubectl(ctxs []string, args string) string {
 func (a *App) rk9sDashboard(name string) {
 	ctxs, subject := a.dashContexts()
 	switch name {
-	case "longhorn":
-		a.runDashScript("Longhorn", subject, fmt.Sprintf(`
-echo '=== Longhorn Storage Dashboard ==='
-echo 'Contexts: %s'
-echo ''
-echo '--- Volumes ---'
-%s
-echo '--- Nodes ---'
-%s
-echo '--- Engine Images ---'
-%s
-echo '--- Replicas (max 30) ---'
-%s
-echo '--- Settings (max 20) ---'
-%s
-echo ''
-echo 'Plugin shortcuts (navigate to volumes.longhorn.io view):'
-echo '  Shift-L  Preflight check     Shift-R  Replica info'
-echo '  Shift-T  Trim volume         Shift-B  Snapshots'
-echo '  Shift-S  Volume YAML'
-`,
-			subject,
-			mcKubectl(ctxs, "get volumes.longhorn.io -n longhorn-system -o custom-columns='NAME:.metadata.name,STATE:.status.state,ROBUSTNESS:.status.robustness,SIZE:.spec.size,REPLICAS:.spec.numberOfReplicas,NODE:.status.currentNodeID'"),
-			mcKubectl(ctxs, "get nodes.longhorn.io -n longhorn-system -o custom-columns='NAME:.metadata.name,READY:.status.conditions.Ready.status,SCHEDULABLE:.spec.allowScheduling,STORAGE:.status.diskStatus'"),
-			mcKubectl(ctxs, "get engineimages.longhorn.io -n longhorn-system -o wide"),
-			mcKubectl(ctxs, "get replicas.longhorn.io -n longhorn-system -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,NODE:.spec.nodeID,RUNNING:.status.currentState' | head -30"),
-			mcKubectl(ctxs, "get settings.longhorn.io -n longhorn-system -o custom-columns='NAME:.metadata.name,VALUE:.value' | head -20"),
-		))
-
-	case "fleet":
-		a.runDashScript("Fleet", subject, fmt.Sprintf(`
-echo '=== Fleet Continuous Delivery Dashboard ==='
-echo 'Contexts: %s'
-echo ''
-if command -v fleet >/dev/null 2>&1; then
-  echo '--- fleet CLI status ---'
-  fleet --version 2>/dev/null || echo '  (version unknown)'
-  echo ''
-fi
-echo '--- GitRepos ---'
-%s
-echo ''
-echo '--- BundleDeployment Summary ---'
-%s
-echo ''
-echo '--- Fleet Clusters ---'
-%s
-echo ''
-echo '--- Not Ready / Out-of-Sync ---'
-%s
-echo ''
-echo '--- Bundles (max 30) ---'
-%s
-echo ''
-echo '--- ClusterGroups ---'
-%s
-echo ''
-echo '--- Fleet Agent Status ---'
-%s
-echo ''
-echo '--- Last Reconcile Timestamps ---'
-%s
-echo ''
-echo 'Navigation: :gitrepos.fleet.cattle.io | :bundles.fleet.cattle.io | :clusters.fleet.cattle.io'
-echo 'Plugin shortcuts (in gitrepos/bundles view):'
-echo '  Shift-G  GitRepo status      Shift-R  Force reconcile'
-echo '  Shift-T  Bundle targets      Shift-C  Cluster registration'
-echo '  Shift-D  Drift detection     Shift-L  Fleet agent logs'
-`,
-			subject,
-			mcKubectl(ctxs, "get gitrepos.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPO:.spec.repo,BRANCH:.spec.branch,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady,STATE:.status.display.state'"),
-			mcKubectl(ctxs, "get bundledeployments.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.state' 2>/dev/null | awk 'NR==1{print; next} {count[$3]++} END{for(s in count) printf \"  %s: %d\\n\", s, count[s]}' || echo '  (no bundle deployments)'"),
-			mcKubectl(ctxs, "get clusters.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.readyBundles,STATE:.status.display.state'"),
-			mcKubectl(ctxs, "get bundledeployments.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATE:.status.display.state' --no-headers 2>/dev/null | grep -v Ready || echo '  All deployments ready!'"),
-			mcKubectl(ctxs, "get bundles.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' | head -30"),
-			mcKubectl(ctxs, "get clustergroups.fleet.cattle.io -A -o wide 2>/dev/null || echo '  (no cluster groups)'"),
-			mcKubectl(ctxs, "get pods -n cattle-fleet-system -l app=fleet-agent -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,AGE:.metadata.creationTimestamp' 2>/dev/null || echo '  (fleet-agent not found)'"),
-			mcKubectl(ctxs, "get gitrepos.fleet.cattle.io -A -o custom-columns='NAME:.metadata.name,LAST_UPDATE:.status.conditions[?(@.type==\"Ready\")].lastUpdateTime' 2>/dev/null | head -15"),
-		))
-
-	case "rancher":
-		a.runDashScript("Rancher", subject, fmt.Sprintf(`
-echo '=== Rancher Management Dashboard ==='
-echo 'Contexts: %s'
-echo ''
-echo '--- Server URL ---'
-%s
-echo ''
-echo '--- Managed Clusters ---'
-%s
-echo ''
-echo '--- Cluster Capacity ---'
-%s
-echo ''
-echo '--- Fleet Agent Status ---'
-%s
-echo ''
-echo '--- Projects (max 20) ---'
-%s
-echo ''
-echo '--- Catalog Repos ---'
-%s
-echo ''
-echo '--- Users (max 15) ---'
-%s
-echo ''
-echo '--- Key Settings ---'
-%s
-echo ''
-echo 'Navigation: :clusters.management.cattle.io | :projects.management.cattle.io'
-echo 'Plugin shortcuts (in clusters.management.cattle.io view):'
-echo '  Shift-O  Cluster overview     Shift-U  All clusters'
-echo '  Shift-A  Apps/Catalogs        Shift-J  Projects'
-echo '  Shift-K  Generate kubeconfig  Shift-F  Fleet status'
-`,
-			subject,
-			mcKubectl(ctxs, "get settings.management.cattle.io server-url -o jsonpath='{.value}' 2>/dev/null || echo '(not found)'"),
-			mcKubectl(ctxs, "get clusters.management.cattle.io -o custom-columns='NAME:.metadata.name,DISPLAY:.spec.displayName,PROVIDER:.status.provider,K8S:.status.version.gitVersion,READY:.status.conditions[?(@.type==\"Ready\")].status,NODES:.status.allocatable.pods'"),
-			mcKubectl(ctxs, "get clusters.management.cattle.io -o custom-columns='CLUSTER:.spec.displayName,CPU:.status.allocatable.cpu,MEM:.status.allocatable.memory,PODS:.status.allocatable.pods'"),
-			mcKubectl(ctxs, "get clusters.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY_BUNDLES:.status.display.readyBundles,STATE:.status.display.state' 2>/dev/null || echo '  (fleet CRDs not present)'"),
-			mcKubectl(ctxs, "get projects.management.cattle.io -A -o custom-columns='CLUSTER:.metadata.namespace,NAME:.metadata.name,DISPLAY:.spec.displayName' | head -20"),
-			mcKubectl(ctxs, "get clusterrepos.catalog.cattle.io -o custom-columns='NAME:.metadata.name,URL:.spec.url,STATE:.status.conditions[?(@.type==\"FollowerDeployed\")].status' 2>/dev/null || echo '  (no catalog repos)'"),
-			mcKubectl(ctxs, "get users.management.cattle.io -o custom-columns='NAME:.metadata.name,USERNAME:.username,DISPLAY:.displayName' | head -15"),
-			mcKubectl(ctxs, "get settings.management.cattle.io -o custom-columns='NAME:.metadata.name,VALUE:.value' | grep -E 'NAME|server-url|server-version|ui-|auth-provider' | head -15"),
-		))
-
-	case "harvester":
-		a.runDashScript("Harvester", subject, fmt.Sprintf(`
-echo '=== Harvester / KubeVirt VM Dashboard ==='
-echo 'Contexts: %s'
-echo ''
-echo '--- Virtual Machines ---'
-%s
-echo '--- VM Instances (running) ---'
-%s
-echo '--- DataVolumes ---'
-%s
-echo '--- VM Networks ---'
-%s
-echo ''
-echo 'Plugin shortcuts (navigate to virtualmachines.kubevirt.io view):'
-echo '  Shift-H  VM overview          Shift-S  Console (virtctl)'
-echo '  Shift-V  VNC                  Shift-W  Start VM'
-echo '  Shift-X  Stop VM              Shift-Z  Restart VM'
-echo '  Shift-P  Pause                Shift-Q  Unpause'
-echo '  Shift-Y  SSH                  Shift-I  Guest OS info'
-echo '  m        Live migrate'
-`,
-			subject,
-			mcKubectl(ctxs, "get vm -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,RUNNING:.spec.running,AGE:.metadata.creationTimestamp'"),
-			mcKubectl(ctxs, "get vmi -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,NODE:.status.nodeName,IP:.status.interfaces[0].ipAddress'"),
-			mcKubectl(ctxs, "get dv -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress'"),
-			mcKubectl(ctxs, "get net-attach-def -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name'"),
-		))
-
 	case "etcd":
 		a.runDashScript("etcd", subject, fmt.Sprintf(`
 echo '=== etcd Dashboard ==='

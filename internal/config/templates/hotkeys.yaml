@@ -1,31 +1,33 @@
-# rk9s hotkeys – dashboard views (open in-TUI, no terminal)
+# rk9s hotkeys – interactive views & dashboards
 # Auto-synced by rk9s on startup. Press ? to see all shortcuts.
 #
-# Shift-1..5  Dashboards (Longhorn, Fleet, Rancher, Harvester, Nodes)
-# Shift-6     rk9s status (CLI check, plugins, nav help)
+# Shift-1..4  Interactive CRD views (Longhorn, Fleet, Rancher, Harvester)
+# Shift-5     Nodes (interactive table)
+# Shift-6     rk9s status overview
 # Shift-7     Contexts view (multi-context selection)
-# Shift-8     etcd Dashboard (health, members, db size, alarms)
+# Shift-8     etcd dashboard (health, members, db size, alarms)
 #
-# Or type: :longhorn :fleet :rancher :harvester :nodes :rk9s :context :etcd
+# Within each view, press Shift-I for an aggregated overview dashboard.
+# Use ? for full plugin shortcuts per view.
 #
 hotKeys:
   rk9s-longhorn:
     shortCut: Shift-1
-    description: Longhorn Dashboard
-    command: longhorn
+    description: Longhorn Volumes
+    command: volumes.longhorn.io
   rk9s-fleet:
     shortCut: Shift-2
-    description: Fleet Dashboard
-    command: fleet
+    description: Fleet GitRepos
+    command: gitrepos.fleet.cattle.io
   rk9s-rancher:
     shortCut: Shift-3
-    description: Rancher Dashboard
-    command: rancher
+    description: Rancher Clusters
+    command: clusters.management.cattle.io
   rk9s-harvester:
     shortCut: Shift-4
-    description: Harvester Dashboard
-    command: harvester
-  rk9s-nodes-info:
+    description: Harvester VMs
+    command: virtualmachines.kubevirt.io
+  rk9s-nodes:
     shortCut: Shift-5
     description: Nodes
     command: nodes

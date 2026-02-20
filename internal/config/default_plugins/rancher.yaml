@@ -156,3 +156,40 @@ plugins:
         echo ""
         echo "--- Bundles ---"
         kubectl get bundles.fleet.cattle.io -A --context $CONTEXT -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' 2>/dev/null | less -K
+  rancher-overview:
+    shortCut: Shift-I
+    override: true
+    description: Rancher overview dashboard
+    scopes:
+      - clusters.management.cattle.io
+      - projects.management.cattle.io
+      - users.management.cattle.io
+      - settings.management.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Rancher Management Overview ==="
+        echo ""
+        echo "--- Server URL ---"
+        kubectl get settings.management.cattle.io server-url --context $CONTEXT -o jsonpath='{.value}' 2>/dev/null || echo "(not found)"
+        echo ""
+        echo ""
+        echo "--- Managed Clusters ---"
+        kubectl get clusters.management.cattle.io --context $CONTEXT -o custom-columns='NAME:.metadata.name,DISPLAY:.spec.displayName,PROVIDER:.status.provider,K8S:.status.version.gitVersion,READY:.status.conditions[?(@.type=="Ready")].status' 2>/dev/null
+        echo ""
+        echo "--- Cluster Capacity ---"
+        kubectl get clusters.management.cattle.io --context $CONTEXT -o custom-columns='CLUSTER:.spec.displayName,CPU:.status.allocatable.cpu,MEM:.status.allocatable.memory,PODS:.status.allocatable.pods' 2>/dev/null
+        echo ""
+        echo "--- Projects (top 20) ---"
+        kubectl get projects.management.cattle.io -A --context $CONTEXT -o custom-columns='CLUSTER:.metadata.namespace,NAME:.metadata.name,DISPLAY:.spec.displayName' 2>/dev/null | head -20
+        echo ""
+        echo "--- Catalog Repos ---"
+        kubectl get clusterrepos.catalog.cattle.io --context $CONTEXT -o custom-columns='NAME:.metadata.name,URL:.spec.url' 2>/dev/null || echo "  (no catalog repos)"
+        echo ""
+        echo "--- Users (top 15) ---"
+        kubectl get users.management.cattle.io --context $CONTEXT -o custom-columns='NAME:.metadata.name,USERNAME:.username,DISPLAY:.displayName' 2>/dev/null | head -15
+        echo ""
+        echo "--- Key Settings ---"
+        kubectl get settings.management.cattle.io --context $CONTEXT -o custom-columns='NAME:.metadata.name,VALUE:.value' 2>/dev/null | grep -E 'NAME|server-url|server-version|ui-|auth-provider' | head -15 | less -K

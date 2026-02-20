@@ -44,3 +44,28 @@ plugins:
         echo ""
         echo "=== Conditions ==="
         kubectl get vm $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{range .status.conditions[*]}Type: {.type}  Status: {.status}  Reason: {.reason}  Message: {.message}{"\n"}{end}' 2>/dev/null | less -K
+  harvester-overview:
+    shortCut: Shift-I
+    override: true
+    description: Harvester VM overview dashboard
+    scopes:
+      - virtualmachines.kubevirt.io
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Harvester / KubeVirt VM Overview ==="
+        echo ""
+        echo "--- Virtual Machines ---"
+        kubectl get vm -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,RUNNING:.spec.running,AGE:.metadata.creationTimestamp' 2>/dev/null || echo "  (no VMs found)"
+        echo ""
+        echo "--- VM Instances (running) ---"
+        kubectl get vmi -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,NODE:.status.nodeName,IP:.status.interfaces[0].ipAddress' 2>/dev/null || echo "  (no running VMIs)"
+        echo ""
+        echo "--- DataVolumes ---"
+        kubectl get dv -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress' 2>/dev/null || echo "  (no data volumes)"
+        echo ""
+        echo "--- VM Networks ---"
+        kubectl get net-attach-def -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' 2>/dev/null || echo "  (no network attachments)" | less -K

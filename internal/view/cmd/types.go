@@ -79,10 +79,6 @@ var (
 		"status",
 	)
 	rk9sDashCmd = sets.New(
-		"longhorn",
-		"fleet",
-		"rancher",
-		"harvester",
 		"etcd",
 	)
 )

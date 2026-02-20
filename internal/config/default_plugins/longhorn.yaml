@@ -96,3 +96,34 @@ plugins:
         else
           kubectl get node $NAME -o yaml --context $CONTEXT | less -K
         fi
+  longhorn-overview:
+    shortCut: Shift-I
+    override: true
+    description: Longhorn overview dashboard
+    scopes:
+      - volumes.longhorn.io
+      - nodes.longhorn.io
+      - engineimages.longhorn.io
+      - replicas.longhorn.io
+      - settings.longhorn.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Longhorn Storage Overview ==="
+        echo ""
+        echo "--- Volumes ---"
+        kubectl get volumes.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,STATE:.status.state,ROBUSTNESS:.status.robustness,SIZE:.spec.size,REPLICAS:.spec.numberOfReplicas,NODE:.status.currentNodeID' 2>/dev/null || echo "  (no volumes)"
+        echo ""
+        echo "--- Nodes ---"
+        kubectl get nodes.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,READY:.status.conditions.Ready.status,SCHEDULABLE:.spec.allowScheduling' 2>/dev/null || echo "  (no nodes)"
+        echo ""
+        echo "--- Engine Images ---"
+        kubectl get engineimages.longhorn.io -n longhorn-system --context $CONTEXT -o wide 2>/dev/null || echo "  (no engine images)"
+        echo ""
+        echo "--- Replicas (top 30) ---"
+        kubectl get replicas.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,NODE:.spec.nodeID,STATE:.status.currentState' 2>/dev/null | head -30
+        echo ""
+        echo "--- Settings (top 20) ---"
+        kubectl get settings.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,VALUE:.value' 2>/dev/null | head -20 | less -K

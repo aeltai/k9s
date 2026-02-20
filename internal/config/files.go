@@ -354,14 +354,14 @@ func EnsureDefaultHotkeys() error {
 		return nil
 	}
 	rk9sHotkeys := map[string]HotKey{
-		"rk9s-longhorn":   {ShortCut: "Shift-1", Override: true, Description: "Longhorn Dashboard", Command: "longhorn"},
-		"rk9s-fleet":      {ShortCut: "Shift-2", Override: true, Description: "Fleet Dashboard", Command: "fleet"},
-		"rk9s-rancher":    {ShortCut: "Shift-3", Override: true, Description: "Rancher Dashboard", Command: "rancher"},
-		"rk9s-harvester":  {ShortCut: "Shift-4", Override: true, Description: "Harvester Dashboard", Command: "harvester"},
-		"rk9s-nodes-info": {ShortCut: "Shift-5", Override: true, Description: "Nodes", Command: "nodes"},
-		"rk9s-status":     {ShortCut: "Shift-6", Override: true, Description: "rk9s Status", Command: "rk9s"},
-		"rk9s-contexts":   {ShortCut: "Shift-7", Override: true, Description: "Contexts", Command: "context"},
-		"rk9s-etcd":       {ShortCut: "Shift-8", Override: true, Description: "etcd Dashboard", Command: "etcd"},
+		"rk9s-longhorn":  {ShortCut: "Shift-1", Override: true, Description: "Longhorn Volumes", Command: "volumes.longhorn.io"},
+		"rk9s-fleet":     {ShortCut: "Shift-2", Override: true, Description: "Fleet GitRepos", Command: "gitrepos.fleet.cattle.io"},
+		"rk9s-rancher":   {ShortCut: "Shift-3", Override: true, Description: "Rancher Clusters", Command: "clusters.management.cattle.io"},
+		"rk9s-harvester": {ShortCut: "Shift-4", Override: true, Description: "Harvester VMs", Command: "virtualmachines.kubevirt.io"},
+		"rk9s-nodes":     {ShortCut: "Shift-5", Override: true, Description: "Nodes", Command: "nodes"},
+		"rk9s-status":    {ShortCut: "Shift-6", Override: true, Description: "rk9s Status", Command: "rk9s"},
+		"rk9s-contexts":  {ShortCut: "Shift-7", Override: true, Description: "Contexts", Command: "context"},
+		"rk9s-etcd":      {ShortCut: "Shift-8", Override: true, Description: "etcd Dashboard", Command: "etcd"},
 	}
 
 	existing := NewHotKeys()

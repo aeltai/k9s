@@ -151,3 +151,41 @@ plugins:
         echo ""
         echo "--- Conditions ---"
         kubectl get clusters.fleet.cattle.io -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.conditions[*]}  {.type}: {.status} ({.reason}){"\n"}{end}' 2>/dev/null | less -K
+  fleet-overview:
+    shortCut: Shift-I
+    override: true
+    description: Fleet overview dashboard
+    scopes:
+      - gitrepos.fleet.cattle.io
+      - bundles.fleet.cattle.io
+      - bundledeployments.fleet.cattle.io
+      - clusters.fleet.cattle.io
+      - clustergroups.fleet.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Fleet Continuous Delivery Overview ==="
+        echo ""
+        if command -v fleet >/dev/null 2>&1; then
+          echo "fleet CLI: $(fleet --version 2>/dev/null || echo 'unknown')"
+          echo ""
+        fi
+        echo "--- GitRepos ---"
+        kubectl get gitrepos.fleet.cattle.io -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPO:.spec.repo,BRANCH:.spec.branch,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady,STATE:.status.display.state' 2>/dev/null
+        echo ""
+        echo "--- Fleet Clusters ---"
+        kubectl get clusters.fleet.cattle.io -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.readyBundles,STATE:.status.display.state' 2>/dev/null
+        echo ""
+        echo "--- Not Ready / Out-of-Sync ---"
+        kubectl get bundledeployments.fleet.cattle.io -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATE:.status.display.state' --no-headers 2>/dev/null | grep -v Ready || echo "  All deployments ready!"
+        echo ""
+        echo "--- Bundles (top 30) ---"
+        kubectl get bundles.fleet.cattle.io -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' 2>/dev/null | head -30
+        echo ""
+        echo "--- ClusterGroups ---"
+        kubectl get clustergroups.fleet.cattle.io -A --context $CONTEXT -o wide 2>/dev/null || echo "  (no cluster groups)"
+        echo ""
+        echo "--- Fleet Agent ---"
+        kubectl get pods -n cattle-fleet-system --context $CONTEXT -l app=fleet-agent -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount' 2>/dev/null || echo "  (fleet-agent not found)" | less -K
