@@ -74,22 +74,4 @@ plugins:
         else
           kubectl get clusters.management.cattle.io -A --context $CONTEXT 2>/dev/null | less -K
         fi
-  rancher-multi-context:
-    shortCut: Shift-M
-    description: Run across selected contexts (use $CONTEXTS)
-    scopes:
-      - contexts
-    command: bash
-    background: false
-    args:
-      - -c
-      - |
-        if [ -z "${CONTEXTS:-}" ]; then
-          echo "Select contexts first: Space=toggle, Ctrl-A=all, Ctrl-Space=none"
-          exit 1
-        fi
-        echo "=== Running across contexts: $CONTEXTS ==="
-        for ctx in $(echo "$CONTEXTS" | tr ',' ' '); do
-          echo ""; echo "--- $ctx ---"; kubectl get nodes --context "$ctx" 2>/dev/null || true
-        done
-        echo ""; echo "Done. Use Shift-M in context view after selecting contexts."
+  # Shift-M multi-context is now built-in (context.go) with parallel execution

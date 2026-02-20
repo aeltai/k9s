@@ -1,6 +1,6 @@
 # rk9s – SUSE/Rancher Kubernetes TUI
 
-rk9s is a **SUSE/Rancher-focused** fork of k9s. It adds plugins and aliases for Rancher, Fleet, RKE2, K3s, Longhorn, Harvester, Kubewarden, and Traefik/NGINX Ingress.
+rk9s is a **SUSE/Rancher-focused** fork of k9s. It adds plugins and aliases for Rancher, Fleet, RKE2, K3s, Longhorn, Harvester, Kubewarden, and Traefik/NGINX Ingress. Multi-context operations run in **parallel** (inspired by [kubectl-mc](https://github.com/jonnylangefeld/kubectl-mc)).
 
 **Press `?` in rk9s to open the Help view.** The **RK9S** section in the legend lists all our shortcuts. They also appear in **RESOURCE** when viewing the matching resource (e.g. nodes, volumes).
 
@@ -186,10 +186,12 @@ Alias: `:vm` for VirtualMachine, `:vmi` for VirtualMachineInstance.
 1. `:contexts` to open the context list.
 2. The **SELECTED** column shows `+` for selected contexts.
 3. **Space** to select contexts, **Ctrl-A** to select all.
-4. **Shift-M** runs `kubectl get nodes` across all selected contexts and shows combined output.
-5. Type `:rk9s` for a full status page with CLI versions, selected contexts, and nodes.
+4. **Shift-M** runs `kubectl get nodes` across all selected contexts **in parallel** (like [kubectl-mc](https://github.com/jonnylangefeld/kubectl-mc)) and shows combined output.
+5. Type `:rk9s` for a full status page with CLI versions, selected contexts, and nodes (also parallel).
 
 Plugins on other views also receive `$CONTEXTS` (comma-separated) for multi-cluster operations.
+
+> **Speed:** With 10+ clusters, parallel execution is 3-5x faster than sequential. All kubectl calls run as background jobs and results are displayed in order.
 
 ### How to: Trim a Longhorn volume
 

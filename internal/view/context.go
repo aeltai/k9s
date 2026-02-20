@@ -120,22 +120,11 @@ func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
-	var script strings.Builder
-	script.WriteString("echo '=== rk9s multi-context overview ===' && echo '' && ")
-	for i, ctx := range sel {
-		if i > 0 {
-			script.WriteString(" && ")
-		}
-		script.WriteString(fmt.Sprintf(
-			`echo '--- Context: %s ---' && kubectl get nodes --context %s -o wide 2>&1 || echo '  (unreachable)' && echo ''`,
-			ctx, ctx,
-		))
-	}
-
+	script := mcParallelScript(sel, []string{"get", "nodes", "-o", "wide"})
 	opts := shellOpts{
 		binary:     "bash",
 		background: false,
-		args:       []string{"-c", script.String()},
+		args:       []string{"-c", script},
 	}
 	suspend, errChan, _ := run(c.App(), &opts)
 	if !suspend {
@@ -151,6 +140,33 @@ func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
 	}()
 
 	return nil
+}
+
+// mcParallelScript generates a bash script that runs kubectl across contexts
+// in parallel (background jobs), captures output to temp files, then displays
+// results in order. Inspired by kubectl-mc.
+func mcParallelScript(contexts []string, kubectlArgs []string) string {
+	args := strings.Join(kubectlArgs, " ")
+	var b strings.Builder
+	b.WriteString(`_tmpdir=$(mktemp -d) && trap 'rm -rf "$_tmpdir"' EXIT && `)
+	b.WriteString(fmt.Sprintf("echo '=== rk9s multi-context (%d contexts, parallel) ===' && echo '' && ", len(contexts)))
+	for _, ctx := range contexts {
+		b.WriteString(fmt.Sprintf(
+			`(kubectl %s --context %s 2>&1 > "$_tmpdir/%s" || echo "(unreachable)" > "$_tmpdir/%s") & `,
+			args, ctx, ctx, ctx,
+		))
+	}
+	b.WriteString("wait && ")
+	for i, ctx := range contexts {
+		if i > 0 {
+			b.WriteString(" && ")
+		}
+		b.WriteString(fmt.Sprintf(
+			`printf '\n%s\n%s\n' && cat "$_tmpdir/%s"`,
+			ctx, strings.Repeat("-", len(ctx)), ctx,
+		))
+	}
+	return b.String()
 }
 
 func (c *Context) renameCmd(evt *tcell.EventKey) *tcell.EventKey {

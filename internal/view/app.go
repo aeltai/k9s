@@ -718,50 +718,56 @@ func (a *App) cowCmd(msg string) {
 }
 
 func (a *App) rk9sCmd() {
-	script := `echo '╔══════════════════════════════════════════════╗'
+	sel, _ := config.LoadSelectedContexts()
+	var nodeBlock string
+	if len(sel) > 0 {
+		ctxList := strings.Join(sel, " ")
+		nodeBlock = fmt.Sprintf(`
+echo '=== Selected Contexts ==='
+for ctx in %s; do printf '  [+] %%s\n' "$ctx"; done
+echo ''
+echo '=== Nodes across selected contexts (parallel) ==='
+_tmpdir=$(mktemp -d) && trap 'rm -rf "$_tmpdir"' EXIT
+for ctx in %s; do
+  (kubectl get nodes --context "$ctx" -o wide 2>&1 > "$_tmpdir/$ctx" || echo "(unreachable)" > "$_tmpdir/$ctx") &
+done
+wait
+for ctx in %s; do
+  printf '\n%%s\n%%s\n' "$ctx" "$(printf '%%0.s-' $(seq 1 ${#ctx}))"
+  cat "$_tmpdir/$ctx"
+done`, ctxList, ctxList, ctxList)
+	} else {
+		nodeBlock = `
+echo '=== Selected Contexts ==='
+echo '  (none) Use :contexts, then Space to select'`
+	}
+
+	script := fmt.Sprintf(`echo '╔══════════════════════════════════════════════╗'
 echo '║            rk9s status                        ║'
 echo '╚══════════════════════════════════════════════╝'
 echo ''
 echo '=== CLI Availability ==='
 for cli in rancher virtctl longhornctl kwctl fleet harvester kubectl; do
-  path=$(command -v "$cli" 2>/dev/null)
-  if [ -n "$path" ]; then
+  p=$(command -v "$cli" 2>/dev/null)
+  if [ -n "$p" ]; then
     ver=$("$cli" version --client 2>/dev/null || "$cli" --version 2>/dev/null || "$cli" version 2>/dev/null || echo "installed")
-    printf '  %-14s ✓  %s\n' "$cli" "$(echo "$ver" | head -1)"
+    printf '  %%-14s ✓  %%s\n' "$cli" "$(echo "$ver" | head -1)"
   else
-    printf '  %-14s ✗  not found\n' "$cli"
+    printf '  %%-14s ✗  not found\n' "$cli"
   fi
 done
-echo ''
-echo '=== Selected Contexts ==='
-sel_file="${XDG_CONFIG_HOME:-$HOME/.config}/rk9s/selected_contexts"
-if [ -f "$sel_file" ] && [ -s "$sel_file" ]; then
-  while IFS= read -r ctx; do
-    [ -z "$ctx" ] && continue
-    printf '  [+] %s\n' "$ctx"
-  done < "$sel_file"
-  echo ''
-  echo '=== Nodes across selected contexts ==='
-  while IFS= read -r ctx; do
-    [ -z "$ctx" ] && continue
-    echo "  --- $ctx ---"
-    kubectl get nodes --context "$ctx" -o wide 2>&1 | sed 's/^/    /'
-    echo ''
-  done < "$sel_file"
-else
-  echo '  (none) Use :contexts, then Space to select'
-fi
+%s
 echo ''
 echo '=== Plugin Directory ==='
 pdir="${XDG_DATA_HOME:-$HOME/.local/share}/rk9s/plugins"
 if [ -d "$pdir" ]; then
-  printf '  %s\n' "$pdir"
-  ls -1 "$pdir"/*.yaml 2>/dev/null | while read f; do printf '    %s\n' "$(basename "$f")"; done
+  printf '  %%s\n' "$pdir"
+  ls -1 "$pdir"/*.yaml 2>/dev/null | while read f; do printf '    %%s\n' "$(basename "$f")"; done
 else
   echo '  (not found)'
 fi
 echo ''
-echo 'Press Escape to return. Type :vm or :vmi for VM views with virtctl shortcuts.'`
+echo 'Press Escape to return. Type :vm or :vmi for VM views with virtctl shortcuts.'`, nodeBlock)
 
 	opts := shellOpts{
 		binary:     "bash",
