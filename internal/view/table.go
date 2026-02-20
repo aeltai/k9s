@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/derailed/k9s/internal"
+	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/model"
 	"github.com/derailed/k9s/internal/render"
@@ -146,6 +147,11 @@ func (t *Table) defaultEnv() Env {
 	env["RESOURCE_GROUP"] = t.GVR().G()
 	env["RESOURCE_VERSION"] = t.GVR().V()
 	env["RESOURCE_NAME"] = t.GVR().R()
+
+	// rk9s: multi-context selection for plugins ($CONTEXTS)
+	if ctxs, err := config.LoadSelectedContexts(); err == nil && len(ctxs) > 0 {
+		env["CONTEXTS"] = strings.Join(ctxs, ",")
+	}
 
 	return env
 }

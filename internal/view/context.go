@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 
 	"github.com/derailed/k9s/internal/client"
+	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/slogs"
 	"github.com/derailed/k9s/internal/ui"
@@ -40,15 +42,74 @@ func NewContext(gvr *client.GVR) ResourceViewer {
 }
 
 func (c *Context) bindKeys(aa *ui.KeyActions) {
-	aa.Delete(ui.KeyShiftA, tcell.KeyCtrlSpace, ui.KeySpace)
+	aa.Delete(ui.KeyShiftA, tcell.KeyCtrlSpace)
 	if !c.App().Config.IsReadOnly() {
 		c.bindDangerousKeys(aa)
 	}
+	// rk9s: multi-context selection (Space=toggle, Ctrl-A=select all)
+	aa.Add(ui.KeySpace, ui.NewKeyAction("ToggleSelect", c.toggleSelectCtx, true))
+	aa.Add(tcell.KeyCtrlA, ui.NewKeyAction("SelectAll", c.selectAllCtx, true))
+	aa.Add(tcell.KeyCtrlSpace, ui.NewKeyAction("SelectNone", c.selectNoneCtx, true))
 }
 
 func (c *Context) bindDangerousKeys(aa *ui.KeyActions) {
 	aa.Add(ui.KeyR, ui.NewKeyAction("Rename", c.renameCmd, true))
 	aa.Add(tcell.KeyCtrlD, ui.NewKeyAction("Delete", c.deleteCmd, true))
+}
+
+func (c *Context) toggleSelectCtx(evt *tcell.EventKey) *tcell.EventKey {
+	ctxName := c.GetTable().GetSelectedItem()
+	if ctxName == "" {
+		return evt
+	}
+	selected, _ := config.LoadSelectedContexts()
+	if selected == nil {
+		selected = []string{}
+	}
+	if idx := slices.Index(selected, ctxName); idx >= 0 {
+		selected = append(selected[:idx], selected[idx+1:]...)
+		c.App().Flash().Infof("Deselected context %q", ctxName)
+	} else {
+		selected = append(selected, ctxName)
+		c.App().Flash().Infof("Selected context %q", ctxName)
+	}
+	if err := config.SaveSelectedContexts(selected); err != nil {
+		slog.Error("Save selected contexts", slogs.Error, err)
+		c.App().Flash().Err(err)
+		return nil
+	}
+	c.App().Flash().Infof("%d context(s) selected for multi-context operations", len(selected))
+	c.Refresh()
+	return nil
+}
+
+func (c *Context) selectAllCtx(evt *tcell.EventKey) *tcell.EventKey {
+	ctxNames, err := c.App().factory.Client().Config().ContextNames()
+	if err != nil {
+		c.App().Flash().Err(err)
+		return nil
+	}
+	ctxs := make([]string, 0, len(ctxNames))
+	for n := range ctxNames {
+		ctxs = append(ctxs, n)
+	}
+	if err := config.SaveSelectedContexts(ctxs); err != nil {
+		c.App().Flash().Err(err)
+		return nil
+	}
+	c.App().Flash().Infof("Selected all %d contexts for multi-context operations", len(ctxs))
+	c.Refresh()
+	return nil
+}
+
+func (c *Context) selectNoneCtx(evt *tcell.EventKey) *tcell.EventKey {
+	if err := config.SaveSelectedContexts(nil); err != nil {
+		c.App().Flash().Err(err)
+		return nil
+	}
+	c.App().Flash().Info("Cleared context selection")
+	c.Refresh()
+	return nil
 }
 
 func (c *Context) renameCmd(evt *tcell.EventKey) *tcell.EventKey {

@@ -32,6 +32,9 @@ build:                   ## Builds the CLI
 	-ldflags "-w -s -X ${PACKAGE}/cmd.version=${VERSION} -X ${PACKAGE}/cmd.commit=${GIT_REV} -X ${PACKAGE}/cmd.date=${DATE}" \
 	-a -tags=${GO_TAGS} -o ${OUTPUT_BIN} main.go
 
+sync-plugins:            ## Sync plugins/ to internal/config/default_plugins/ for embedding
+	@cp plugins/*.yaml internal/config/default_plugins/
+
 kubectl-stable-version:  ## Get kubectl latest stable version
 	@curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt
 

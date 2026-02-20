@@ -1,0 +1,46 @@
+# Fleet plugins for rk9s
+# Requires: fleetctl or kubectl
+plugins:
+  fleet-gitrepo-status:
+    shortCut: Shift-G
+    description: Fleet GitRepo status
+    scopes:
+      - gitrepos
+    command: kubectl
+    background: false
+    args:
+      - get
+      - gitrepo
+      - -n
+      - $NAMESPACE
+      - $NAME
+      - -o
+      - yaml
+      - --context
+      - $CONTEXT
+  fleet-gitrepo-reconcile:
+    shortCut: Shift-R
+    description: Force reconcile Fleet GitRepo
+    scopes:
+      - gitrepos.fleet.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - 'kubectl annotate gitrepo -n $NAMESPACE $NAME fleet.cattle.io/force-reconcile=$(date +%s) --overwrite --context $CONTEXT'
+  fleet-target:
+    shortCut: Shift-T
+    description: Fleet target (which clusters get bundle)
+    scopes:
+      - bundles.fleet.cattle.io
+      - bundledeployments.fleet.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v fleet >/dev/null 2>&1; then
+          fleet target $NAME --context $CONTEXT 2>/dev/null | less -K || kubectl get bundle -A -o wide --context $CONTEXT | grep -E "NAME|$NAME" | less -K
+        else
+          kubectl get bundle -A -o wide --context $CONTEXT | less -K
+        fi

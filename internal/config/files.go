@@ -4,17 +4,21 @@
 package config
 
 import (
-	_ "embed"
+	"embed"
 	"errors"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/adrg/xdg"
 	"github.com/derailed/k9s/internal/config/data"
 	"github.com/derailed/k9s/internal/slogs"
 )
+
+//go:embed default_plugins/*.yaml
+var defaultPluginsFS embed.FS
 
 const (
 	// K9sEnvConfigDir represents k9s configuration dir env var.
@@ -111,11 +115,17 @@ func InitLogLoc() error {
 
 // InitLocs initializes k9s artifacts locations.
 func InitLocs() error {
+	var err error
 	if isEnvSet(K9sEnvConfigDir) {
-		return initK9sEnvLocs()
+		err = initK9sEnvLocs()
+	} else {
+		err = initXDGLocs()
 	}
-
-	return initXDGLocs()
+	if err != nil {
+		return err
+	}
+	_ = EnsureDefaultPlugins() // copy embedded plugins on first run
+	return nil
 }
 
 func initK9sEnvLocs() error {
@@ -295,4 +305,78 @@ func SkinFileFromName(n string) string {
 	}
 
 	return filepath.Join(AppSkinsDir, n+".yaml")
+}
+
+// SelectedContextsPath returns the path for rk9s multi-context selection.
+func SelectedContextsPath() string {
+	path, err := xdg.ConfigFile(filepath.Join(AppName, "selected_contexts"))
+	if err != nil {
+		return filepath.Join(AppConfigDir, "selected_contexts")
+	}
+	return path
+}
+
+// LoadSelectedContexts reads the list of selected contexts (one per line).
+func LoadSelectedContexts() ([]string, error) {
+	path := SelectedContextsPath()
+	bb, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(string(bb)), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out, nil
+}
+
+// SaveSelectedContexts writes the selected contexts to disk.
+func SaveSelectedContexts(ctxs []string) error {
+	path := SelectedContextsPath()
+	if err := data.EnsureDirPath(filepath.Dir(path), data.DefaultDirMod); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(strings.Join(ctxs, "\n")), 0600)
+}
+
+// EnsureDefaultPlugins copies embedded rk9s plugins to the user's plugins dir
+// if it exists and is empty. Allows plugins to work without running install script.
+func EnsureDefaultPlugins() error {
+	dir, err := xdg.DataFile(filepath.Join(AppName, "plugins"))
+	if err != nil {
+		return nil // non-fatal
+	}
+	entries, _ := fs.ReadDir(defaultPluginsFS, "default_plugins")
+	if len(entries) == 0 {
+		return nil
+	}
+	if err := data.EnsureDirPath(dir, data.DefaultDirMod); err != nil {
+		return nil
+	}
+	// Only copy if dir is empty (first run)
+	existing, _ := os.ReadDir(dir)
+	if len(existing) > 0 {
+		return nil
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		content, err := fs.ReadFile(defaultPluginsFS, filepath.Join("default_plugins", e.Name()))
+		if err != nil {
+			slog.Warn("Could not read embedded plugin", slogs.Path, e.Name(), slogs.Error, err)
+			continue
+		}
+		dst := filepath.Join(dir, e.Name())
+		if err := os.WriteFile(dst, content, 0644); err != nil {
+			slog.Warn("Could not write default plugin", slogs.Path, dst, slogs.Error, err)
+		}
+	}
+	return nil
 }

@@ -1,3 +1,15 @@
+# rk9s hotkeys - custom shortcuts (plugins add these automatically)
+# Press ? to see RESOURCE section for view-specific plugin shortcuts
+#
+# rk9s plugin shortcuts (when viewing matching resource):
+# NODES:    Shift-C RKE2/K3s config | Shift-D services | Shift-P crictl | Shift-E etcdctl
+# RANCHER:  Shift-O UI | Shift-F Fleet UI | Shift-K sync kubeconfig | Shift-J projects | Shift-U clusters
+# FLEET:    Shift-G GitRepo status | Shift-R reconcile | Shift-T bundle target
+# LONGHORN: Shift-L Longhorn UI | Shift-V volume YAML | Shift-T trim
+# HARVESTER: Shift-H UI | Shift-S VM shell | Shift-V VNC
+# KUBEWARDEN: Shift-K policies | Shift-I inspect | Shift-S scaffold
+# INGRESS:   Shift-I Traefik/NGINX describe
+#
 hotKeys:
   # Examples...
   # shift-0:
