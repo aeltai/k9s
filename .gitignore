@@ -26,4 +26,5 @@ kind
 *.snap
 /stresser
 __debug_bin*
-fg.yamlrk9s
+fg.yaml
+/rk9s
