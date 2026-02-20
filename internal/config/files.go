@@ -347,18 +347,20 @@ func SaveSelectedContexts(ctxs []string) error {
 	return os.WriteFile(path, []byte(strings.Join(ctxs, "\n")), 0600)
 }
 
-// EnsureDefaultHotkeys writes rk9s navigation hotkeys to the hotkeys config file.
-// Merges with existing user hotkeys, only adding new entries.
+// EnsureDefaultHotkeys writes rk9s dashboard hotkeys to the hotkeys config file.
+// Merges with existing user hotkeys; always overwrites rk9s-* entries so dashboards stay correct.
 func EnsureDefaultHotkeys() error {
 	if AppHotKeysFile == "" {
 		return nil
 	}
 	rk9sHotkeys := map[string]HotKey{
-		"rk9s-longhorn":   {ShortCut: "Shift-1", Description: "Longhorn Dashboard", Command: "longhorn"},
-		"rk9s-fleet":      {ShortCut: "Shift-2", Description: "Fleet Dashboard", Command: "fleet"},
-		"rk9s-rancher":    {ShortCut: "Shift-3", Description: "Rancher Dashboard", Command: "rancher"},
-		"rk9s-harvester":  {ShortCut: "Shift-4", Description: "Harvester Dashboard", Command: "harvester"},
-		"rk9s-nodes-info": {ShortCut: "Shift-5", Description: "Nodes Dashboard", Command: "nodes-info"},
+		"rk9s-longhorn":   {ShortCut: "Shift-1", Override: true, Description: "Longhorn Dashboard", Command: "longhorn"},
+		"rk9s-fleet":      {ShortCut: "Shift-2", Override: true, Description: "Fleet Dashboard", Command: "fleet"},
+		"rk9s-rancher":    {ShortCut: "Shift-3", Override: true, Description: "Rancher Dashboard", Command: "rancher"},
+		"rk9s-harvester":  {ShortCut: "Shift-4", Override: true, Description: "Harvester Dashboard", Command: "harvester"},
+		"rk9s-nodes-info": {ShortCut: "Shift-5", Override: true, Description: "Nodes Dashboard", Command: "nodes-info"},
+		"rk9s-status":     {ShortCut: "Shift-6", Override: true, Description: "rk9s Status", Command: "rk9s"},
+		"rk9s-contexts":   {ShortCut: "Shift-7", Override: true, Description: "Contexts", Command: "context"},
 	}
 
 	existing := NewHotKeys()
@@ -366,7 +368,8 @@ func EnsureDefaultHotkeys() error {
 
 	changed := false
 	for k, v := range rk9sHotkeys {
-		if _, ok := existing.HotKey[k]; !ok {
+		prev, ok := existing.HotKey[k]
+		if !ok || prev.Command != v.Command || prev.ShortCut != v.ShortCut || prev.Override != v.Override {
 			existing.HotKey[k] = v
 			changed = true
 		}

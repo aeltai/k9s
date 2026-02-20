@@ -278,7 +278,7 @@ func (a *App) toggleHeader(header, logo bool) {
 	}
 	if a.showHeader {
 		flex.RemoveItemAtIndex(0)
-		flex.AddItemAtIndex(0, a.buildHeader(), 7, 1, false)
+		flex.AddItemAtIndex(0, a.buildHeader(), 8, 1, false)
 	} else {
 		flex.RemoveItemAtIndex(0)
 		flex.AddItemAtIndex(0, a.statusIndicator(), 1, 1, false)
@@ -799,96 +799,165 @@ echo '  Shift-P  All Pods across selected contexts'
 	a.runDashScript("rk9s", ctxInfo, script)
 }
 
+func (a *App) dashContexts() ([]string, string) {
+	sel, _ := config.LoadSelectedContexts()
+	if len(sel) < 2 {
+		ctx := a.Config.K9s.ActiveContextName()
+		return []string{ctx}, ctx
+	}
+	return sel, strings.Join(sel, ", ")
+}
+
+func mcKubectl(ctxs []string, args string) string {
+	if len(ctxs) == 1 {
+		return fmt.Sprintf("kubectl %s --context %s 2>/dev/null", args, ctxs[0])
+	}
+	var b strings.Builder
+	b.WriteString("for _ctx in")
+	for _, c := range ctxs {
+		b.WriteString(" " + c)
+	}
+	b.WriteString("; do\n")
+	b.WriteString("  echo \"  [$_ctx]\"\n")
+	b.WriteString(fmt.Sprintf("  kubectl %s --context $_ctx 2>/dev/null || echo '    (unavailable)'\n", args))
+	b.WriteString("  echo ''\n")
+	b.WriteString("done\n")
+	return b.String()
+}
+
 func (a *App) rk9sDashboard(name string) {
-	ctx := a.Config.K9s.ActiveContextName()
+	ctxs, subject := a.dashContexts()
 	switch name {
 	case "longhorn":
-		a.runDashScript("Longhorn", ctx, fmt.Sprintf(`
+		a.runDashScript("Longhorn", subject, fmt.Sprintf(`
 echo '=== Longhorn Storage Dashboard ==='
-echo 'Context: %s'
+echo 'Contexts: %s'
 echo ''
 echo '--- Volumes ---'
-kubectl get volumes.longhorn.io -n longhorn-system --context %s -o custom-columns='NAME:.metadata.name,STATE:.status.state,ROBUSTNESS:.status.robustness,SIZE:.spec.size,REPLICAS:.spec.numberOfReplicas,NODE:.status.currentNodeID' 2>/dev/null || echo '  (Longhorn not installed or no volumes found)'
-echo ''
+%s
 echo '--- Nodes ---'
-kubectl get nodes.longhorn.io -n longhorn-system --context %s -o custom-columns='NAME:.metadata.name,READY:.status.conditions.Ready.status,SCHEDULABLE:.spec.allowScheduling,STORAGE:.status.diskStatus' 2>/dev/null || echo '  (no Longhorn nodes)'
-echo ''
+%s
 echo '--- Engine Images ---'
-kubectl get engineimages.longhorn.io -n longhorn-system --context %s -o wide 2>/dev/null || echo '  (none)'
-echo ''
-echo '--- Replicas ---'
-kubectl get replicas.longhorn.io -n longhorn-system --context %s -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,NODE:.spec.nodeID,RUNNING:.status.currentState' 2>/dev/null | head -30 || echo '  (none)'
-echo ''
-echo '--- Settings ---'
-kubectl get settings.longhorn.io -n longhorn-system --context %s -o custom-columns='NAME:.metadata.name,VALUE:.value' 2>/dev/null | head -20 || echo '  (none)'
+%s
+echo '--- Replicas (max 30) ---'
+%s
+echo '--- Settings (max 20) ---'
+%s
 echo ''
 echo 'Plugin shortcuts (navigate to volumes.longhorn.io view):'
 echo '  Shift-L  Preflight check     Shift-R  Replica info'
 echo '  Shift-T  Trim volume         Shift-B  Snapshots'
 echo '  Shift-S  Volume YAML'
-`, ctx, ctx, ctx, ctx, ctx, ctx))
+`,
+			subject,
+			mcKubectl(ctxs, "get volumes.longhorn.io -n longhorn-system -o custom-columns='NAME:.metadata.name,STATE:.status.state,ROBUSTNESS:.status.robustness,SIZE:.spec.size,REPLICAS:.spec.numberOfReplicas,NODE:.status.currentNodeID'"),
+			mcKubectl(ctxs, "get nodes.longhorn.io -n longhorn-system -o custom-columns='NAME:.metadata.name,READY:.status.conditions.Ready.status,SCHEDULABLE:.spec.allowScheduling,STORAGE:.status.diskStatus'"),
+			mcKubectl(ctxs, "get engineimages.longhorn.io -n longhorn-system -o wide"),
+			mcKubectl(ctxs, "get replicas.longhorn.io -n longhorn-system -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,NODE:.spec.nodeID,RUNNING:.status.currentState' | head -30"),
+			mcKubectl(ctxs, "get settings.longhorn.io -n longhorn-system -o custom-columns='NAME:.metadata.name,VALUE:.value' | head -20"),
+		))
 
 	case "fleet":
-		a.runDashScript("Fleet", ctx, fmt.Sprintf(`
+		a.runDashScript("Fleet", subject, fmt.Sprintf(`
 echo '=== Fleet Continuous Delivery Dashboard ==='
-echo 'Context: %s'
+echo 'Contexts: %s'
 echo ''
 echo '--- GitRepos ---'
-kubectl get gitrepos.fleet.cattle.io -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPO:.spec.repo,BRANCH:.spec.branch,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady,STATE:.status.display.state' 2>/dev/null || echo '  (Fleet not installed or no GitRepos)'
+%s
+echo ''
+echo '--- BundleDeployment Summary ---'
+%s
 echo ''
 echo '--- Fleet Clusters ---'
-kubectl get clusters.fleet.cattle.io -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.readyBundles,STATE:.status.display.state' 2>/dev/null || echo '  (none)'
+%s
 echo ''
-echo '--- Bundles ---'
-kubectl get bundles.fleet.cattle.io -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' 2>/dev/null | head -30 || echo '  (none)'
+echo '--- Bundles (max 30) ---'
+%s
 echo ''
 echo '--- ClusterGroups ---'
-kubectl get clustergroups.fleet.cattle.io -A --context %s -o wide 2>/dev/null || echo '  (none)'
+%s
 echo ''
-echo 'Plugin shortcuts (navigate to gitrepos.fleet.cattle.io view):'
+echo '--- Fleet Agent Status ---'
+%s
+echo ''
+echo '--- Last Reconcile Timestamps ---'
+%s
+echo ''
+echo 'Navigation: :gitrepos.fleet.cattle.io | :bundles.fleet.cattle.io | :clusters.fleet.cattle.io'
+echo 'Plugin shortcuts (in gitrepos/bundles view):'
 echo '  Shift-G  GitRepo status      Shift-R  Force reconcile'
-echo '  Shift-T  Bundle targets       Shift-C  Cluster registration'
-`, ctx, ctx, ctx, ctx, ctx))
+echo '  Shift-T  Bundle targets      Shift-C  Cluster registration'
+echo '  Shift-D  Drift detection     Shift-L  Fleet agent logs'
+`,
+			subject,
+			mcKubectl(ctxs, "get gitrepos.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPO:.spec.repo,BRANCH:.spec.branch,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady,STATE:.status.display.state'"),
+			mcKubectl(ctxs, "get bundledeployments.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.state' 2>/dev/null | awk 'NR==1{print; next} {count[$3]++} END{for(s in count) printf \"  %s: %d\\n\", s, count[s]}' || echo '  (no bundle deployments)'"),
+			mcKubectl(ctxs, "get clusters.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.readyBundles,STATE:.status.display.state'"),
+			mcKubectl(ctxs, "get bundles.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' | head -30"),
+			mcKubectl(ctxs, "get clustergroups.fleet.cattle.io -A -o wide 2>/dev/null || echo '  (no cluster groups)'"),
+			mcKubectl(ctxs, "get pods -n cattle-fleet-system -l app=fleet-agent -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,AGE:.metadata.creationTimestamp' 2>/dev/null || echo '  (fleet-agent not found)'"),
+			mcKubectl(ctxs, "get gitrepos.fleet.cattle.io -A -o custom-columns='NAME:.metadata.name,LAST_UPDATE:.status.conditions[?(@.type==\"Ready\")].lastUpdateTime' 2>/dev/null | head -15"),
+		))
 
 	case "rancher":
-		a.runDashScript("Rancher", ctx, fmt.Sprintf(`
+		a.runDashScript("Rancher", subject, fmt.Sprintf(`
 echo '=== Rancher Management Dashboard ==='
-echo 'Context: %s'
+echo 'Contexts: %s'
+echo ''
+echo '--- Server URL ---'
+%s
 echo ''
 echo '--- Managed Clusters ---'
-kubectl get clusters.management.cattle.io --context %s -o custom-columns='NAME:.metadata.name,DISPLAY:.spec.displayName,PROVIDER:.status.provider,K8S:.status.version.gitVersion,READY:.status.conditions[?(@.type=="Ready")].status' 2>/dev/null || echo '  (Rancher management CRDs not found)'
+%s
 echo ''
-echo '--- Projects ---'
-kubectl get projects.management.cattle.io -A --context %s -o custom-columns='CLUSTER:.metadata.namespace,NAME:.metadata.name,DISPLAY:.spec.displayName' 2>/dev/null | head -20 || echo '  (none)'
+echo '--- Cluster Capacity ---'
+%s
 echo ''
-echo '--- Users ---'
-kubectl get users.management.cattle.io --context %s -o custom-columns='NAME:.metadata.name,USERNAME:.username,DISPLAY:.displayName' 2>/dev/null | head -15 || echo '  (none)'
+echo '--- Fleet Agent Status ---'
+%s
 echo ''
-echo '--- Settings ---'
-kubectl get settings.management.cattle.io --context %s -o custom-columns='NAME:.metadata.name,VALUE:.value' 2>/dev/null | grep -E 'NAME|server-url|server-version|ui-' | head -10 || echo '  (none)'
+echo '--- Projects (max 20) ---'
+%s
 echo ''
-echo 'Plugin shortcuts (navigate to clusters.management.cattle.io view):'
+echo '--- Catalog Repos ---'
+%s
+echo ''
+echo '--- Users (max 15) ---'
+%s
+echo ''
+echo '--- Key Settings ---'
+%s
+echo ''
+echo 'Navigation: :clusters.management.cattle.io | :projects.management.cattle.io'
+echo 'Plugin shortcuts (in clusters.management.cattle.io view):'
 echo '  Shift-O  Cluster overview     Shift-U  All clusters'
-echo '  Shift-J  Projects             Shift-K  Generate kubeconfig'
-echo '  Shift-F  Fleet status'
-`, ctx, ctx, ctx, ctx, ctx))
+echo '  Shift-A  Apps/Catalogs        Shift-J  Projects'
+echo '  Shift-K  Generate kubeconfig  Shift-F  Fleet status'
+`,
+			subject,
+			mcKubectl(ctxs, "get settings.management.cattle.io server-url -o jsonpath='{.value}' 2>/dev/null || echo '(not found)'"),
+			mcKubectl(ctxs, "get clusters.management.cattle.io -o custom-columns='NAME:.metadata.name,DISPLAY:.spec.displayName,PROVIDER:.status.provider,K8S:.status.version.gitVersion,READY:.status.conditions[?(@.type==\"Ready\")].status,NODES:.status.allocatable.pods'"),
+			mcKubectl(ctxs, "get clusters.management.cattle.io -o custom-columns='CLUSTER:.spec.displayName,CPU:.status.allocatable.cpu,MEM:.status.allocatable.memory,PODS:.status.allocatable.pods'"),
+			mcKubectl(ctxs, "get clusters.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY_BUNDLES:.status.display.readyBundles,STATE:.status.display.state' 2>/dev/null || echo '  (fleet CRDs not present)'"),
+			mcKubectl(ctxs, "get projects.management.cattle.io -A -o custom-columns='CLUSTER:.metadata.namespace,NAME:.metadata.name,DISPLAY:.spec.displayName' | head -20"),
+			mcKubectl(ctxs, "get clusterrepos.catalog.cattle.io -o custom-columns='NAME:.metadata.name,URL:.spec.url,STATE:.status.conditions[?(@.type==\"FollowerDeployed\")].status' 2>/dev/null || echo '  (no catalog repos)'"),
+			mcKubectl(ctxs, "get users.management.cattle.io -o custom-columns='NAME:.metadata.name,USERNAME:.username,DISPLAY:.displayName' | head -15"),
+			mcKubectl(ctxs, "get settings.management.cattle.io -o custom-columns='NAME:.metadata.name,VALUE:.value' | grep -E 'NAME|server-url|server-version|ui-|auth-provider' | head -15"),
+		))
 
 	case "harvester":
-		a.runDashScript("Harvester", ctx, fmt.Sprintf(`
+		a.runDashScript("Harvester", subject, fmt.Sprintf(`
 echo '=== Harvester / KubeVirt VM Dashboard ==='
-echo 'Context: %s'
+echo 'Contexts: %s'
 echo ''
 echo '--- Virtual Machines ---'
-kubectl get vm -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,RUNNING:.spec.running,AGE:.metadata.creationTimestamp' 2>/dev/null || echo '  (KubeVirt not installed or no VMs)'
-echo ''
+%s
 echo '--- VM Instances (running) ---'
-kubectl get vmi -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,NODE:.status.nodeName,IP:.status.interfaces[0].ipAddress' 2>/dev/null || echo '  (none running)'
-echo ''
+%s
 echo '--- DataVolumes ---'
-kubectl get dv -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress' 2>/dev/null || echo '  (none)'
-echo ''
+%s
 echo '--- VM Networks ---'
-kubectl get net-attach-def -A --context %s -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' 2>/dev/null || echo '  (none)'
+%s
 echo ''
 echo 'Plugin shortcuts (navigate to virtualmachines.kubevirt.io view):'
 echo '  Shift-H  VM overview          Shift-S  Console (virtctl)'
@@ -897,30 +966,55 @@ echo '  Shift-X  Stop VM              Shift-Z  Restart VM'
 echo '  Shift-P  Pause                Shift-Q  Unpause'
 echo '  Shift-Y  SSH                  Shift-I  Guest OS info'
 echo '  m        Live migrate'
-`, ctx, ctx, ctx, ctx, ctx))
+`,
+			subject,
+			mcKubectl(ctxs, "get vm -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,RUNNING:.spec.running,AGE:.metadata.creationTimestamp'"),
+			mcKubectl(ctxs, "get vmi -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,NODE:.status.nodeName,IP:.status.interfaces[0].ipAddress'"),
+			mcKubectl(ctxs, "get dv -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress'"),
+			mcKubectl(ctxs, "get net-attach-def -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name'"),
+		))
 
 	case "nodes-info":
-		a.runDashScript("Nodes", ctx, fmt.Sprintf(`
+		a.runDashScript("Nodes", subject, fmt.Sprintf(`
 echo '=== Node Infrastructure Dashboard ==='
-echo 'Context: %s'
+echo 'Contexts: %s'
 echo ''
 echo '--- Nodes ---'
-kubectl get nodes --context %s -o wide 2>/dev/null || echo '  (no nodes)'
+%s
+echo ''
+echo '--- Node Details ---'
+%s
 echo ''
 echo '--- Node Conditions ---'
-kubectl get nodes --context %s -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,DISK:.status.conditions[?(@.type=="DiskPressure")].status,MEM:.status.conditions[?(@.type=="MemoryPressure")].status,PID:.status.conditions[?(@.type=="PIDPressure")].status' 2>/dev/null
+%s
 echo ''
 echo '--- Node Resources ---'
-kubectl top nodes --context %s 2>/dev/null || echo '  (metrics-server not available)'
+%s
+echo ''
+echo '--- Pod Count Per Node ---'
+%s
 echo ''
 echo '--- Taints ---'
-kubectl get nodes --context %s -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints[*].key' 2>/dev/null
+%s
 echo ''
-echo 'Plugin shortcuts (navigate to nodes view):'
+echo '--- Node Labels (roles + topology) ---'
+%s
+echo ''
+echo 'Navigation: :nodes'
+echo 'Plugin shortcuts (in nodes view):'
 echo '  Shift-C  RKE2/K3s config     Shift-D  Node services (systemd)'
 echo '  Shift-P  crictl ps            Shift-E  etcdctl health'
 echo '  Shift-G  Longhorn node info'
-`, ctx, ctx, ctx, ctx, ctx))
+`,
+			subject,
+			mcKubectl(ctxs, "get nodes -o wide"),
+			mcKubectl(ctxs, "get nodes -o custom-columns='NAME:.metadata.name,OS:.status.nodeInfo.osImage,KERNEL:.status.nodeInfo.kernelVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion,KUBELET:.status.nodeInfo.kubeletVersion'"),
+			mcKubectl(ctxs, "get nodes -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type==\"Ready\")].status,DISK:.status.conditions[?(@.type==\"DiskPressure\")].status,MEM:.status.conditions[?(@.type==\"MemoryPressure\")].status,PID:.status.conditions[?(@.type==\"PIDPressure\")].status'"),
+			mcKubectl(ctxs, "top nodes 2>/dev/null || echo '  (metrics-server not available)'"),
+			mcKubectl(ctxs, "get pods -A --field-selector=status.phase=Running -o custom-columns='NODE:.spec.nodeName' --no-headers 2>/dev/null | sort | uniq -c | sort -rn | awk '{printf \"  %-40s %s pods\\n\", $2, $1}'"),
+			mcKubectl(ctxs, "get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints[*].key'"),
+			mcKubectl(ctxs, "get nodes -o custom-columns='NAME:.metadata.name,ROLES:.metadata.labels.node-role\\.kubernetes\\.io/*,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone' 2>/dev/null || echo '  (labels query failed)'"),
+		))
 	}
 }
 

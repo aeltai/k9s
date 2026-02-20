@@ -16,6 +16,7 @@ import (
 
 	"github.com/derailed/k9s/internal"
 	"github.com/derailed/k9s/internal/client"
+	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/config/data"
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/model"
@@ -176,6 +177,9 @@ func (b *Browser) Start() {
 	b.GetModel().AddListener(b)
 	b.Table.Start()
 	b.CmdBuff().AddListener(b)
+
+	b.activateMultiContext()
+
 	if err := b.GetModel().Watch(b.prepareContext()); err != nil {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
@@ -184,6 +188,32 @@ func (b *Browser) Start() {
 			})
 		}()
 	}
+}
+
+func (b *Browser) activateMultiContext() {
+	mt, ok := b.GetModel().(*model.Table)
+	if !ok {
+		return
+	}
+	mt.ClearMultiContexts()
+	if b.meta == nil || !dao.IsK8sMeta(b.meta) {
+		return
+	}
+	sel, _ := config.LoadSelectedContexts()
+	if len(sel) < 2 {
+		return
+	}
+	rawCfg, err := b.app.Conn().Config().RawConfig()
+	if err != nil {
+		slog.Warn("Multi-context: unable to get raw config", slogs.Error, err)
+		return
+	}
+	mt.SetMultiContexts(sel, rawCfg)
+	mt.SetRefreshRate(5 * time.Second)
+	b.GetTable().Actions().Add(
+		ui.KeyShiftC,
+		ui.NewKeyAction("Sort Cluster", b.GetTable().SortColCmd("CLUSTER", true), false),
+	)
 }
 
 // Stop terminates browser updates.
@@ -391,6 +421,21 @@ func (b *Browser) viewCmd(evt *tcell.EventKey) *tcell.EventKey {
 		return evt
 	}
 
+	ctxName, realPath := model1.SplitMultiContextID(path)
+	if ctxName != "" {
+		b.Stop()
+		defer b.Start()
+		ns, n := client.Namespaced(realPath)
+		args := []string{"get", b.GVR().FQN(n), "-o", "yaml"}
+		if ns != "" && ns != client.ClusterScope {
+			args = append(args, "-n", ns)
+		}
+		if err := runK(b.app, &shellOpts{clear: true, args: args, overrideContext: ctxName}); err != nil {
+			b.App().Flash().Errf("YAML view failed: %s", err)
+		}
+		return nil
+	}
+
 	v := NewLiveView(b.app, yamlAction, model.NewYAML(b.GVR(), path))
 	if err := v.app.inject(v, false); err != nil {
 		v.app.Flash().Err(err)
@@ -448,6 +493,21 @@ func (b *Browser) enterCmd(evt *tcell.EventKey) *tcell.EventKey {
 		return nil
 	}
 
+	ctxName, realPath := model1.SplitMultiContextID(path)
+	if ctxName != "" && b.enterFn == nil {
+		b.Stop()
+		defer b.Start()
+		ns, n := client.Namespaced(realPath)
+		args := []string{"describe", b.GVR().FQN(n)}
+		if ns != "" && ns != client.ClusterScope {
+			args = append(args, "-n", ns)
+		}
+		if err := runK(b.app, &shellOpts{clear: true, args: args, overrideContext: ctxName}); err != nil {
+			b.App().Flash().Errf("Describe failed: %s", err)
+		}
+		return nil
+	}
+
 	f := describeResource
 	if b.enterFn != nil {
 		f = b.enterFn
@@ -492,6 +552,21 @@ func (b *Browser) describeCmd(evt *tcell.EventKey) *tcell.EventKey {
 	if path == "" {
 		return evt
 	}
+
+	ctxName, realPath := model1.SplitMultiContextID(path)
+	if ctxName != "" {
+		b.Stop()
+		defer b.Start()
+		ns, n := client.Namespaced(realPath)
+		args := []string{"describe", b.GVR().FQN(n)}
+		if ns != "" && ns != client.ClusterScope {
+			args = append(args, "-n", ns)
+		}
+		if err := runK(b.app, &shellOpts{clear: true, args: args, overrideContext: ctxName}); err != nil {
+			b.App().Flash().Errf("Describe failed: %s", err)
+		}
+		return nil
+	}
 	describeResource(b.app, b.GetModel(), b.GVR(), path)
 
 	return nil
@@ -503,16 +578,21 @@ func (b *Browser) editCmd(evt *tcell.EventKey) *tcell.EventKey {
 		return evt
 	}
 
+	ctxOverride, realPath := model1.SplitMultiContextID(path)
+	if ctxOverride != "" {
+		path = realPath
+	}
+
 	b.Stop()
 	defer b.Start()
-	if err := editRes(b.app, b.GVR(), path); err != nil {
+	if err := editRes(b.app, b.GVR(), path, ctxOverride); err != nil {
 		b.App().Flash().Err(err)
 	}
 
 	return nil
 }
 
-func editRes(app *App, gvr *client.GVR, path string) error {
+func editRes(app *App, gvr *client.GVR, path string, ctxOverride ...string) error {
 	if path == "" {
 		return fmt.Errorf("nothing selected %q", path)
 	}
@@ -523,8 +603,14 @@ func editRes(app *App, gvr *client.GVR, path string) error {
 	if client.IsClusterScoped(ns) {
 		ns = client.BlankNamespace
 	}
-	if ok, err := app.Conn().CanI(ns, gvr, n, client.PatchAccess); !ok || err != nil {
-		return fmt.Errorf("current user can't edit resource %s", gvr)
+	var ctxOvr string
+	if len(ctxOverride) > 0 {
+		ctxOvr = ctxOverride[0]
+	}
+	if ctxOvr == "" {
+		if ok, err := app.Conn().CanI(ns, gvr, n, client.PatchAccess); !ok || err != nil {
+			return fmt.Errorf("current user can't edit resource %s", gvr)
+		}
 	}
 
 	args := make([]string, 0, 10)
@@ -532,7 +618,7 @@ func editRes(app *App, gvr *client.GVR, path string) error {
 	if ns != client.BlankNamespace {
 		args = append(args, "-n", ns)
 	}
-	if err := runK(app, &shellOpts{clear: true, args: args}); err != nil {
+	if err := runK(app, &shellOpts{clear: true, args: args, overrideContext: ctxOvr}); err != nil {
 		app.Flash().Errf("Edit command failed: %s", err)
 	}
 
@@ -654,6 +740,10 @@ func (b *Browser) refreshActions() {
 		slog.Warn("Hotkeys load failed", slogs.Error, err)
 		b.app.Logo().Warn("HotKeys load failed!")
 	}
+	// Re-apply view-specific bindings so they override plugins/hotkeys (e.g. Context Shift-M/P)
+	for _, f := range b.bindKeysFn {
+		f(b.Actions())
+	}
 	b.app.Menu().HydrateMenu(b.Hints())
 }
 
@@ -728,14 +818,33 @@ func (b *Browser) resourceDelete(selections []string, msg string) {
 			b.app.Flash().Infof("Delete resource %s %s", b.GVR(), selections[0])
 		}
 		for _, sel := range selections {
-			grace := dao.DefaultGrace
-			if force {
-				grace = dao.ForceGrace
-			}
-			if err := b.GetModel().Delete(b.defaultContext(), sel, propagation, grace); err != nil {
-				b.app.Flash().Errf("Delete failed with `%s", err)
+			ctxName, realPath := model1.SplitMultiContextID(sel)
+			if ctxName != "" {
+				ns, n := client.Namespaced(realPath)
+				args := []string{"delete", b.GVR().FQN(n)}
+				if ns != "" && ns != client.ClusterScope {
+					args = append(args, "-n", ns)
+				}
+				if force {
+					args = append(args, "--grace-period=0", "--force")
+				}
+				out, err := oneShoot(context.Background(), &shellOpts{
+					binary: "kubectl",
+					args:   append([]string{"--context", ctxName}, args...),
+				})
+				if err != nil {
+					b.app.Flash().Errf("Delete failed: %s %s", err, out)
+				}
 			} else {
-				b.app.factory.DeleteForwarder(sel)
+				grace := dao.DefaultGrace
+				if force {
+					grace = dao.ForceGrace
+				}
+				if err := b.GetModel().Delete(b.defaultContext(), sel, propagation, grace); err != nil {
+					b.app.Flash().Errf("Delete failed with `%s", err)
+				} else {
+					b.app.factory.DeleteForwarder(sel)
+				}
 			}
 			b.GetTable().DeleteMark(sel)
 		}

@@ -1,15 +1,11 @@
-# rk9s hotkeys – dashboard views & quick navigation
+# rk9s hotkeys – dashboard views (open in-TUI, no terminal)
 # Auto-synced by rk9s on startup. Press ? to see all shortcuts.
 #
-# DASHBOARDS (from anywhere):
-#   Shift-1  Longhorn Dashboard   (volumes, nodes, replicas, settings)
-#   Shift-2  Fleet Dashboard      (gitrepos, clusters, bundles)
-#   Shift-3  Rancher Dashboard    (clusters, projects, users)
-#   Shift-4  Harvester Dashboard  (VMs, VMIs, datavolumes, networks)
-#   Shift-5  Nodes Dashboard      (nodes, conditions, resources, taints)
+# Shift-1..5  Dashboards (Longhorn, Fleet, Rancher, Harvester, Nodes)
+# Shift-6     rk9s status (CLI check, plugins, nav help)
+# Shift-7     Contexts view (multi-context selection)
 #
-# You can also type these as commands:
-#   :longhorn  :fleet  :rancher  :harvester  :nodes-info  :rk9s
+# Or type: :longhorn :fleet :rancher :harvester :nodes-info :rk9s :context
 #
 hotKeys:
   rk9s-longhorn:
@@ -32,3 +28,11 @@ hotKeys:
     shortCut: Shift-5
     description: Nodes Dashboard
     command: nodes-info
+  rk9s-status:
+    shortCut: Shift-6
+    description: rk9s Status
+    command: rk9s
+  rk9s-contexts:
+    shortCut: Shift-7
+    description: Contexts
+    command: context

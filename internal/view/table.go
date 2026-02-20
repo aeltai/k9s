@@ -10,9 +10,10 @@ import (
 	"strings"
 
 	"github.com/derailed/k9s/internal"
-	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/client"
+	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/model"
+	"github.com/derailed/k9s/internal/model1"
 	"github.com/derailed/k9s/internal/render"
 	"github.com/derailed/k9s/internal/slogs"
 	"github.com/derailed/k9s/internal/ui"
@@ -151,6 +152,11 @@ func (t *Table) defaultEnv() Env {
 	// rk9s: multi-context selection for plugins ($CONTEXTS)
 	if ctxs, err := config.LoadSelectedContexts(); err == nil && len(ctxs) > 0 {
 		env["CONTEXTS"] = strings.Join(ctxs, ",")
+	}
+
+	if ctxName, realPath := model1.SplitMultiContextID(path); ctxName != "" {
+		env["CONTEXT"] = ctxName
+		env["NAMESPACE"], env["NAME"] = client.Namespaced(realPath)
 	}
 
 	return env

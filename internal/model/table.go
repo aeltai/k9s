@@ -17,10 +17,12 @@ import (
 	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/model1"
+	"github.com/derailed/k9s/internal/render"
 	"github.com/derailed/k9s/internal/slogs"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/clientcmd/api"
 )
 
 const initRefreshRate = 300 * time.Millisecond
@@ -48,6 +50,9 @@ type Table struct {
 	labelSelector labels.Selector
 	mx            sync.RWMutex
 	vs            *config.ViewSetting
+
+	multiCtxs []string
+	rawConfig *api.Config
 }
 
 // NewTable returns a new table model.
@@ -200,6 +205,32 @@ func (t *Table) Peek() *model1.TableData {
 	return t.data.Clone()
 }
 
+// SetMultiContexts enables multi-context mode for the table model.
+func (t *Table) SetMultiContexts(ctxs []string, rawCfg api.Config) {
+	t.mx.Lock()
+	defer t.mx.Unlock()
+
+	t.multiCtxs = ctxs
+	t.rawConfig = &rawCfg
+}
+
+// ClearMultiContexts disables multi-context mode.
+func (t *Table) ClearMultiContexts() {
+	t.mx.Lock()
+	defer t.mx.Unlock()
+
+	t.multiCtxs = nil
+	t.rawConfig = nil
+}
+
+// IsMultiContext returns true if the model is in multi-context mode.
+func (t *Table) IsMultiContext() bool {
+	t.mx.RLock()
+	defer t.mx.RUnlock()
+
+	return len(t.multiCtxs) > 0
+}
+
 func (t *Table) updater(ctx context.Context) {
 	bf := backoff.NewExponentialBackOff()
 	bf.InitialInterval, bf.MaxElapsedTime = initRefreshRate, maxReaderRetryInterval
@@ -266,6 +297,14 @@ func (t *Table) list(ctx context.Context, a dao.Accessor) ([]runtime.Object, err
 }
 
 func (t *Table) reconcile(ctx context.Context) error {
+	t.mx.RLock()
+	mc := len(t.multiCtxs) > 0
+	t.mx.RUnlock()
+
+	if mc {
+		return t.multiContextReconcile(ctx)
+	}
+
 	var (
 		oo  []runtime.Object
 		err error
@@ -288,6 +327,61 @@ func (t *Table) reconcile(ctx context.Context) error {
 	r.SetViewSetting(t.vs)
 
 	return t.data.Render(ctx, meta.Renderer, oo)
+}
+
+func (t *Table) multiContextReconcile(ctx context.Context) error {
+	t.mx.RLock()
+	ctxs := make([]string, len(t.multiCtxs))
+	copy(ctxs, t.multiCtxs)
+	var rawCfg api.Config
+	if t.rawConfig != nil {
+		rawCfg = *t.rawConfig
+	}
+	t.mx.RUnlock()
+
+	ns := client.CleanseNamespace(t.data.GetNamespace())
+	if client.IsClusterScoped(ns) {
+		ns = client.BlankNamespace
+	}
+
+	var labelSel string
+	t.mx.RLock()
+	if t.labelSelector != nil {
+		labelSel = t.labelSelector.String()
+	}
+	t.mx.RUnlock()
+
+	results, err := dao.MultiContextList(rawCfg, ctxs, t.gvr.GVR(), ns, labelSel)
+	if err != nil {
+		return err
+	}
+
+	oo := make([]runtime.Object, 0, len(results))
+	ctxByRowID := make(map[string]string, len(results))
+	for _, co := range results {
+		oo = append(oo, co.Object)
+	}
+
+	r := new(render.Generic)
+	r.SetViewSetting(t.vs)
+
+	if err := t.data.Render(ctx, r, oo); err != nil {
+		return err
+	}
+
+	// Build ctxByRowID after render (row IDs are set by the renderer).
+	idx := 0
+	t.data.RowsRange(func(_ int, re model1.RowEvent) bool {
+		if idx < len(results) {
+			ctxByRowID[re.Row.ID] = results[idx].Context
+		}
+		idx++
+		return true
+	})
+
+	t.data.InjectClusterColumn(ctxByRowID)
+
+	return nil
 }
 
 func (t *Table) fireTableChanged(data *model1.TableData) {

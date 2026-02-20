@@ -1,10 +1,11 @@
 # RKE2 / K3s node plugins for rk9s
 # Node scope: $NAME is the node name
 # These plugins use kubectl debug for node access
+# Navigation: Use Shift-5 for Nodes dashboard
 plugins:
   rke2-k3s-config:
     shortCut: Shift-C
-    description: View RKE2/K3s config on node
+    description: RKE2/K3s config + args + TLS-SAN + CNI
     scopes:
       - node
       - nodes
@@ -24,7 +25,17 @@ plugins:
             cat /etc/rancher/rke2/config.yaml
             echo ""
             echo "--- RKE2 Version ---"
-            rke2 --version 2>/dev/null || cat /usr/local/share/rke2/rke2-cis-sysctl.conf 2>/dev/null || echo "(cannot detect version)"
+            rke2 --version 2>/dev/null || echo "(cannot detect version)"
+            echo ""
+            echo "--- Server/Agent Args ---"
+            cat /etc/rancher/rke2/rke2-server.env 2>/dev/null || echo "(no server env)"
+            cat /etc/rancher/rke2/rke2-agent.env 2>/dev/null || echo "(no agent env)"
+            echo ""
+            echo "--- TLS SAN ---"
+            grep -i tls-san /etc/rancher/rke2/config.yaml 2>/dev/null || echo "(no tls-san configured)"
+            echo ""
+            echo "--- CNI Config ---"
+            ls /etc/cni/net.d/ 2>/dev/null && cat /etc/cni/net.d/*.conflist 2>/dev/null | head -30 || echo "(no CNI config)"
             echo ""
             echo "--- Token Hash ---"
             sha256sum /etc/rancher/rke2/token 2>/dev/null | cut -d" " -f1 || echo "(no token file)"
@@ -36,6 +47,15 @@ plugins:
             echo ""
             echo "--- K3s Version ---"
             k3s --version 2>/dev/null || echo "(cannot detect version)"
+            echo ""
+            echo "--- Server/Agent Args ---"
+            cat /etc/systemd/system/k3s.service.env 2>/dev/null || echo "(no service env)"
+            echo ""
+            echo "--- TLS SAN ---"
+            grep -i tls-san /etc/rancher/k3s/config.yaml 2>/dev/null || echo "(no tls-san configured)"
+            echo ""
+            echo "--- CNI Config ---"
+            ls /var/lib/rancher/k3s/agent/etc/cni/net.d/ 2>/dev/null && cat /var/lib/rancher/k3s/agent/etc/cni/net.d/*.conflist 2>/dev/null | head -30 || echo "(no CNI config)"
           else
             echo "No RKE2 or K3s config found on this node"
             echo ""
@@ -45,7 +65,7 @@ plugins:
         ' 2>/dev/null | less -K
   node-distro-services:
     shortCut: Shift-D
-    description: Node services status (systemd)
+    description: Node services + journal errors + containerd
     scopes:
       - node
       - nodes
@@ -57,12 +77,22 @@ plugins:
         echo "=== Service Status: $NAME ==="
         echo ""
         kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          echo "--- Service Status ---"
           for svc in rke2-server rke2-agent k3s containerd kubelet; do
             status=$(systemctl is-active $svc 2>/dev/null)
             if [ "$status" != "unknown" ] 2>/dev/null; then
               printf "  %-20s %s\n" "$svc" "$status"
             fi
           done
+          echo ""
+          echo "--- Containerd Version ---"
+          containerd --version 2>/dev/null || /var/lib/rancher/rke2/bin/containerd --version 2>/dev/null || echo "  (containerd not found in PATH)"
+          echo ""
+          echo "--- Failed Services ---"
+          systemctl --failed --no-pager 2>/dev/null | head -20
+          echo ""
+          echo "--- Recent Journal Errors (last 20) ---"
+          journalctl -p err --no-pager -n 20 2>/dev/null || echo "  (journalctl not available)"
           echo ""
           echo "--- Disk Usage ---"
           df -h / /var/lib/rancher 2>/dev/null
@@ -75,7 +105,7 @@ plugins:
         ' 2>/dev/null | less -K
   crictl-ps:
     shortCut: Shift-P
-    description: crictl ps – running containers on node
+    description: crictl ps – containers sorted by memory
     scopes:
       - node
       - nodes
@@ -87,14 +117,20 @@ plugins:
         echo "=== Containers on Node: $NAME ==="
         echo ""
         kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          echo "--- Running Containers ---"
           crictl ps --output table 2>/dev/null || echo "crictl not available"
           echo ""
-          echo "--- Images ---"
-          crictl images --output table 2>/dev/null | head -20 || echo "crictl not available"
+          echo "--- Container Resource Usage (sorted by memory) ---"
+          crictl stats --output table 2>/dev/null | head -1
+          crictl stats --output table 2>/dev/null | tail -n +2 | sort -k4 -h -r | head -30
+          echo ""
+          echo "--- Images (top 20 by size) ---"
+          crictl images --output table 2>/dev/null | head -1
+          crictl images --output table 2>/dev/null | tail -n +2 | sort -k4 -h -r | head -20
         ' 2>/dev/null | less -K
   etcdctl-health:
     shortCut: Shift-E
-    description: etcdctl endpoint health + status
+    description: etcdctl health + db size + alarms
     scopes:
       - node
       - nodes
@@ -118,9 +154,60 @@ plugins:
           echo "--- Endpoint Health ---"
           etcdctl endpoint health 2>/dev/null || echo "etcdctl not found or certs not available (this may not be a control-plane node)"
           echo ""
-          echo "--- Endpoint Status ---"
+          echo "--- Endpoint Status (incl. DB size) ---"
           etcdctl endpoint status --write-out=table 2>/dev/null
           echo ""
           echo "--- Member List ---"
           etcdctl member list --write-out=table 2>/dev/null
+          echo ""
+          echo "--- Alarms ---"
+          ALARMS=$(etcdctl alarm list 2>/dev/null)
+          if [ -z "$ALARMS" ]; then
+            echo "  No alarms active"
+          else
+            echo "$ALARMS"
+          fi
+          echo ""
+          echo "--- Defrag Status ---"
+          etcdctl endpoint status --write-out=json 2>/dev/null | python3 -c "
+          import sys, json
+          try:
+            data = json.load(sys.stdin)
+            for ep in data:
+              db = ep.get(\"Status\",{}).get(\"dbSize\",0)
+              inuse = ep.get(\"Status\",{}).get(\"dbSizeInUse\",0)
+              frag = ((db - inuse) / db * 100) if db > 0 else 0
+              print(f\"  DB: {db/1024/1024:.1f}MB  InUse: {inuse/1024/1024:.1f}MB  Fragmentation: {frag:.1f}%\")
+          except: print(\"  (unable to parse status)\")
+          " 2>/dev/null || echo "  (defrag check unavailable)"
         ' 2>/dev/null | less -K
+  longhorn-node-storage:
+    shortCut: Shift-G
+    override: true
+    description: Longhorn node storage info
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Longhorn Storage on Node: $NAME ==="
+        echo ""
+        echo "--- Longhorn Node ---"
+        kubectl get nodes.longhorn.io -n longhorn-system $NAME --context $CONTEXT -o jsonpath='{
+          "Ready:         "}{.status.conditions.Ready.status}{"
+          "}{  "Schedulable:   "}{.spec.allowScheduling}{"
+          "}{  "Region:        "}{.status.region}{"
+          "}{  "Zone:          "}{.status.zone}{"
+          "}' 2>/dev/null || echo "  (Longhorn not installed or node not registered)"
+        echo ""
+        echo "--- Disk Status ---"
+        kubectl get nodes.longhorn.io -n longhorn-system $NAME --context $CONTEXT -o jsonpath='{range .status.diskStatus.*}  Disk: {.diskUUID}  Schedulable: {.conditions.Schedulable.status}  Storage: {.storageAvailable}/{.storageMaximum}{"\n"}{end}' 2>/dev/null
+        echo ""
+        echo "--- Scheduled Volumes on This Node ---"
+        kubectl get volumes.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,STATE:.status.state,NODE:.status.currentNodeID,SIZE:.spec.size' 2>/dev/null | grep -E "NAME|$NAME" || echo "  (no volumes on this node)"
+        echo ""
+        echo "--- Replicas on This Node ---"
+        kubectl get replicas.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,STATE:.status.currentState' 2>/dev/null | grep -E "NAME|$NAME" | head -20 || echo "  (no replicas)" | less -K

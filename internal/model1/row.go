@@ -89,4 +89,32 @@ func (s RowSorter) Less(i, j int) bool {
 }
 
 // ----------------------------------------------------------------------------
+
+// MultiContextSep separates the context name from the resource path in row IDs.
+const MultiContextSep = "@@"
+
+// SplitMultiContextID splits a multi-context row ID into context and path.
+// Returns ("", id) if not a multi-context ID.
+func SplitMultiContextID(id string) (ctx, path string) {
+	if i := indexOf(id, MultiContextSep); i >= 0 {
+		return id[:i], id[i+len(MultiContextSep):]
+	}
+	return "", id
+}
+
+// JoinMultiContextID creates a multi-context row ID.
+func JoinMultiContextID(ctx, path string) string {
+	return ctx + MultiContextSep + path
+}
+
+func indexOf(s, sep string) int {
+	for i := 0; i <= len(s)-len(sep); i++ {
+		if s[i:i+len(sep)] == sep {
+			return i
+		}
+	}
+	return -1
+}
+
+// ----------------------------------------------------------------------------
 // Helpers...

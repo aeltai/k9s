@@ -154,12 +154,14 @@ func (h *Help) build() {
 // Each entry notes the view where the shortcut is active.
 func (h *Help) showRk9s() model.MenuHints {
 	return model.MenuHints{
-		// -- Dashboards (global) --
+		// -- Dashboards (global, in-TUI) --
 		{Mnemonic: "Shift-1", Description: "Longhorn Dashboard"},
 		{Mnemonic: "Shift-2", Description: "Fleet Dashboard"},
 		{Mnemonic: "Shift-3", Description: "Rancher Dashboard"},
 		{Mnemonic: "Shift-4", Description: "Harvester Dashboard"},
 		{Mnemonic: "Shift-5", Description: "Nodes Dashboard"},
+		{Mnemonic: "Shift-6", Description: "rk9s Status"},
+		{Mnemonic: "Shift-7", Description: "Contexts view"},
 		{Mnemonic: ":rk9s", Description: "Status & CLI check"},
 		// -- Multi-context [contexts view] --
 		{Mnemonic: "Shift-M", Description: "All Nodes [contexts]"},

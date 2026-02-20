@@ -189,13 +189,15 @@ func (a *KeyActions) Delete(kk ...tcell.Key) {
 }
 
 // Hints returns a collection of hints.
+// Includes non-Shared actions plus Shared actions that have HotKey (so nav hotkeys show in legend).
 func (a *KeyActions) Hints() model.MenuHints {
 	a.mx.RLock()
 	defer a.mx.RUnlock()
 
 	kk := make([]tcell.Key, 0, len(a.actions))
 	for k := range a.actions {
-		if !a.actions[k].Opts.Shared {
+		opts := a.actions[k].Opts
+		if !opts.Shared || opts.HotKey {
 			kk = append(kk, k)
 		}
 	}

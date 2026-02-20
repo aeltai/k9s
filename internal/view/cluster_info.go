@@ -10,11 +10,11 @@ import (
 
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/config"
+	"github.com/derailed/k9s/internal/dao"
 	"github.com/derailed/k9s/internal/model"
 	"github.com/derailed/k9s/internal/render"
 	"github.com/derailed/k9s/internal/slogs"
 	"github.com/derailed/k9s/internal/ui"
-	"github.com/derailed/tcell/v2"
 	"github.com/derailed/tview"
 )
 
@@ -66,7 +66,7 @@ func (c *ClusterInfo) hasMetrics() bool {
 }
 
 func (c *ClusterInfo) layout() {
-	for row, section := range []string{"Context", "Cluster", "User", "K9s Rev", "K8s Rev", "CPU", "MEM", "Contexts"} {
+	for row, section := range []string{"Context", "Cluster", "User", "rk9s Rev", "K9s Rev", "K8s Rev", "CPU", "MEM"} {
 		c.SetCell(row, 0, c.sectionCell(section))
 		c.SetCell(row, 1, c.infoCell(render.NAValue))
 	}
@@ -116,32 +116,83 @@ func (c *ClusterInfo) ClusterInfoChanged(prev, curr *model.ClusterMeta) {
 		c.Clear()
 		c.layout()
 
-		context := curr.Context
-		if ic := ui.ROIndicator(c.app.Config.IsReadOnly(), c.app.Config.K9s.UI.NoIcons); ic != "" {
-			context += " " + ic
-		}
-		row := c.setCell(0, context)
-		row = c.setCell(row, curr.Cluster)
-		row = c.setCell(row, curr.User)
-		if curr.K9sLatest != "" {
-			row = c.setCell(row, fmt.Sprintf("%s ⚡️[cadetblue::b]%s", curr.K9sVer, curr.K9sLatest))
-		} else {
-			row = c.setCell(row, curr.K9sVer)
-		}
-		row = c.setCell(row, curr.K8sVer)
-		if c.hasMetrics() {
-			row = c.setCell(row, ui.AsPercDelta(prev.Cpu, curr.Cpu))
-			row = c.setCell(row, ui.AsPercDelta(prev.Mem, curr.Mem))
-			c.setDefCon(curr.Cpu, curr.Mem)
-		} else {
-			row = c.setCell(row, c.warnCell(render.NAValue, true))
-			row = c.setCell(row, c.warnCell(render.NAValue, true))
-		}
 		sel, _ := config.LoadSelectedContexts()
-		if len(sel) > 0 {
-			_ = c.setCell(row, fmt.Sprintf("[green::b]%s", strings.Join(sel, ", ")))
+		multiCtx := len(sel) > 1
+
+		if multiCtx {
+			rawCfg, err := c.app.Conn().Config().RawConfig()
+
+			ctxLabel := fmt.Sprintf("[green::b]%s[-::-] [gray::][%d]", strings.Join(sel, ", "), len(sel))
+			row := c.setCell(0, ctxLabel)
+
+			var clusters, users []string
+			if err == nil {
+				for _, ctxName := range sel {
+					if kctx, ok := rawCfg.Contexts[ctxName]; ok {
+						clusters = append(clusters, kctx.Cluster)
+						users = append(users, kctx.AuthInfo)
+					} else {
+						clusters = append(clusters, ctxName)
+						users = append(users, render.NAValue)
+					}
+				}
+			}
+			row = c.setCell(row, strings.Join(clusters, ", "))
+			row = c.setCell(row, strings.Join(users, ", "))
+
+			row = c.setCell(row, curr.K9sVer)
+			if curr.K9sLatest != "" {
+				row = c.setCell(row, fmt.Sprintf("[cadetblue::b]%s", curr.K9sLatest))
+			} else {
+				row = c.setCell(row, render.NAValue)
+			}
+
+			if err == nil {
+				versions := dao.MultiContextServerVersions(rawCfg, sel)
+				var vv []string
+				for _, ctxName := range sel {
+					if v, ok := versions[ctxName]; ok {
+						vv = append(vv, v)
+					} else {
+						vv = append(vv, render.NAValue)
+					}
+				}
+				row = c.setCell(row, strings.Join(vv, ", "))
+			} else {
+				row = c.setCell(row, curr.K8sVer)
+			}
+
+			if c.hasMetrics() {
+				row = c.setCell(row, ui.AsPercDelta(prev.Cpu, curr.Cpu))
+				_ = c.setCell(row, ui.AsPercDelta(prev.Mem, curr.Mem))
+				c.setDefCon(curr.Cpu, curr.Mem)
+			} else {
+				row = c.setCell(row, c.warnCell(render.NAValue, true))
+				_ = c.setCell(row, c.warnCell(render.NAValue, true))
+			}
 		} else {
-			_ = c.setCell(row, "[gray::]none")
+			context := curr.Context
+			if ic := ui.ROIndicator(c.app.Config.IsReadOnly(), c.app.Config.K9s.UI.NoIcons); ic != "" {
+				context += " " + ic
+			}
+			row := c.setCell(0, context)
+			row = c.setCell(row, curr.Cluster)
+			row = c.setCell(row, curr.User)
+			row = c.setCell(row, curr.K9sVer)
+			if curr.K9sLatest != "" {
+				row = c.setCell(row, fmt.Sprintf("[cadetblue::b]%s", curr.K9sLatest))
+			} else {
+				row = c.setCell(row, render.NAValue)
+			}
+			row = c.setCell(row, curr.K8sVer)
+			if c.hasMetrics() {
+				row = c.setCell(row, ui.AsPercDelta(prev.Cpu, curr.Cpu))
+				_ = c.setCell(row, ui.AsPercDelta(prev.Mem, curr.Mem))
+				c.setDefCon(curr.Cpu, curr.Mem)
+			} else {
+				row = c.setCell(row, c.warnCell(render.NAValue, true))
+				_ = c.setCell(row, c.warnCell(render.NAValue, true))
+			}
 		}
 		c.updateStyle()
 	})
@@ -170,11 +221,7 @@ func (c *ClusterInfo) updateStyle() {
 	for row := range c.GetRowCount() {
 		c.GetCell(row, 0).SetTextColor(c.styles.K9s.Info.FgColor.Color())
 		c.GetCell(row, 0).SetBackgroundColor(c.styles.BgColor())
-		var s tcell.Style
-		s = s.Bold(true)
-		s = s.Foreground(c.styles.K9s.Info.SectionColor.Color())
-		s = s.Background(c.styles.BgColor())
-		c.GetCell(row, 1).SetStyle(s)
+		c.GetCell(row, 1).SetBackgroundColor(c.styles.BgColor())
 	}
 }
 

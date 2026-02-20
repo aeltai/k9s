@@ -1,10 +1,10 @@
 # Fleet plugins for rk9s
-# Navigation: Use Shift-4 for Fleet GitRepos, Shift-5 for Fleet Clusters
+# Navigation: Use Shift-2 for Fleet dashboard
 # Requires: fleet CLI (optional) or kubectl
 plugins:
   fleet-gitrepo-status:
     shortCut: Shift-G
-    description: GitRepo status + conditions
+    description: GitRepo status + resources + last update
     scopes:
       - gitrepos
       - gitrepos.fleet.cattle.io
@@ -24,13 +24,17 @@ plugins:
           "}{  "Ready:       "}{.status.summary.ready}{"/"}{.status.summary.desiredReady}{"
           "}{  "State:       "}{.status.display.state}{"
           "}{  "Message:     "}{.status.display.message}{"
-          "}' --context $CONTEXT 2>/dev/null
+          "}{  "Last Update: "}{.status.conditions[?(@.type=="Ready")].lastUpdateTime}{"
+          "}' 2>/dev/null
+        echo ""
+        echo "--- Resources (count by kind) ---"
+        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.resources[*]}{.kind}{"\n"}{end}' 2>/dev/null | sort | uniq -c | sort -rn || echo "  (no resources)"
+        echo ""
+        echo "--- Resources (detail) ---"
+        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.resources[*]}  {.kind}/{.name} ({.state}){"\n"}{end}' 2>/dev/null
         echo ""
         echo "--- Conditions ---"
-        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.conditions[*]}  {.type}: {.status} - {.message}{"\n"}{end}' 2>/dev/null
-        echo ""
-        echo "--- Resources ---"
-        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.resources[*]}  {.kind}/{.name} ({.state}){"\n"}{end}' 2>/dev/null | less -K
+        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.conditions[*]}  {.type}: {.status} - {.message}{"\n"}{end}' 2>/dev/null | less -K
   fleet-gitrepo-reconcile:
     shortCut: Shift-R
     description: Force reconcile Fleet GitRepo
@@ -50,9 +54,63 @@ plugins:
         sleep 2
         kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='State: {.status.display.state}  Ready: {.status.summary.ready}/{.status.summary.desiredReady}'
         echo ""
+  fleet-drift-detect:
+    shortCut: Shift-D
+    override: true
+    description: Drift detection (out-of-sync bundles)
+    scopes:
+      - gitrepos.fleet.cattle.io
+      - gitrepos
+      - bundles.fleet.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Fleet Drift Detection ==="
+        echo ""
+        echo "--- Out-of-sync BundleDeployments ---"
+        kubectl get bundledeployments.fleet.cattle.io -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATE:.status.display.state,MESSAGE:.status.display.message' 2>/dev/null | grep -v -E '^NAMESPACE|Ready' || echo "  All bundle deployments are in sync!"
+        echo ""
+        echo "--- Bundles Not Fully Ready ---"
+        kubectl get bundles.fleet.cattle.io -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady,NOT_READY:.status.summary.notReady,MODIFIED:.status.summary.modified' 2>/dev/null | awk 'NR==1{print; next} $3!=$4{print}' || echo "  All bundles fully ready!"
+        echo ""
+        echo "--- Modified Resources ---"
+        kubectl get bundledeployments.fleet.cattle.io -A --context $CONTEXT -o jsonpath='{range .items[*]}{range .status.modifiedStatus[*]}  {.kind}/{.name} in {.namespace}: {.patch}{"\n"}{end}{end}' 2>/dev/null || echo "  (no modified resources)" | less -K
+  fleet-agent-logs:
+    shortCut: Shift-L
+    override: true
+    description: Fleet agent logs
+    scopes:
+      - gitrepos.fleet.cattle.io
+      - gitrepos
+      - clusters.fleet.cattle.io
+      - bundles.fleet.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Fleet Agent Logs ==="
+        echo ""
+        POD=$(kubectl get pods -n cattle-fleet-system --context $CONTEXT -l app=fleet-agent -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -n "$POD" ]; then
+          echo "Pod: $POD"
+          echo ""
+          kubectl logs -n cattle-fleet-system --context $CONTEXT $POD --tail=100 2>/dev/null
+        else
+          echo "Fleet agent pod not found in cattle-fleet-system namespace"
+          echo "Trying cattle-fleet-local-system..."
+          POD=$(kubectl get pods -n cattle-fleet-local-system --context $CONTEXT -l app=fleet-agent -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+          if [ -n "$POD" ]; then
+            kubectl logs -n cattle-fleet-local-system --context $CONTEXT $POD --tail=100 2>/dev/null
+          else
+            echo "No fleet-agent pods found"
+          fi
+        fi | less -K
   fleet-target:
     shortCut: Shift-T
-    description: Bundle deployment targets
+    description: Bundle targets (ready/modified/waiting)
     scopes:
       - bundles.fleet.cattle.io
       - bundledeployments.fleet.cattle.io
@@ -64,11 +122,14 @@ plugins:
         echo "=== Bundle Targets: $NAME ==="
         echo ""
         if command -v fleet >/dev/null 2>&1; then
-          fleet target $NAME --context $CONTEXT 2>/dev/null | less -K
+          fleet target $NAME --context $CONTEXT 2>/dev/null
         else
           echo "--- BundleDeployments ---"
-          kubectl get bundledeployments.fleet.cattle.io -A --context $CONTEXT -l fleet.cattle.io/bundle-name=$NAME -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,READY:.status.display.state,MESSAGE:.status.display.message' 2>/dev/null | less -K
-        fi
+          kubectl get bundledeployments.fleet.cattle.io -A --context $CONTEXT -l fleet.cattle.io/bundle-name=$NAME -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,STATE:.status.display.state,READY:.status.ready,MODIFIED:.status.modifiedStatus' 2>/dev/null
+          echo ""
+          echo "--- State Summary ---"
+          kubectl get bundledeployments.fleet.cattle.io -A --context $CONTEXT -l fleet.cattle.io/bundle-name=$NAME -o custom-columns='STATE:.status.display.state' --no-headers 2>/dev/null | sort | uniq -c | sort -rn
+        fi | less -K
   fleet-cluster-status:
     shortCut: Shift-C
     override: true

@@ -47,6 +47,7 @@ type shellOpts struct {
 	binary            string
 	banner            string
 	args              []string
+	overrideContext   string
 }
 
 func (s shellOpts) String() string {
@@ -71,7 +72,11 @@ func runK(a *App, opts *shellOpts) error {
 	if isInsecure := a.Conn().Config().Flags().Insecure; isInsecure != nil && *isInsecure {
 		args = append(args, "--insecure-skip-tls-verify")
 	}
-	args = append(args, "--context", a.Config.K9s.ActiveContextName())
+	ctxName := a.Config.K9s.ActiveContextName()
+	if opts.overrideContext != "" {
+		ctxName = opts.overrideContext
+	}
+	args = append(args, "--context", ctxName)
 	if cfg := a.Conn().Config().Flags().KubeConfig; cfg != nil && *cfg != "" {
 		args = append(args, "--kubeconfig", *cfg)
 	}
@@ -279,7 +284,10 @@ func oneShoot(ctx context.Context, opts *shellOpts) (string, error) {
 
 	var err error
 	buff := bytes.NewBufferString("")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, buff, buff
+	// Use nil stdin so the child never touches the terminal (avoids TUI being suspended)
+	cmd.Stdin = nil
+	cmd.Stdout = buff
+	cmd.Stderr = buff
 	_, _ = cmd.Stdout.Write([]byte(opts.banner))
 	err = cmd.Run()
 

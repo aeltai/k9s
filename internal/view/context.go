@@ -130,8 +130,10 @@ func (c *Context) runMcView(sel []string, title string, kubectlArgs []string) {
 			return
 		}
 		c.App().QueueUpdateDraw(func() {
+			// Prepend read-only hint: snapshot view has no row selection
+			header := "Snapshot (read-only). Use / to search. For selection and actions use Nodes or Pods view per context.\n\n"
 			details := NewDetails(c.App(), title, strings.Join(sel, ", "), contentTXT, true).
-				Update(out)
+				Update(header + out)
 			if e := c.App().inject(details, false); e != nil {
 				c.App().Flash().Err(e)
 			}

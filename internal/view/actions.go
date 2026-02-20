@@ -96,8 +96,9 @@ func hotKeyActions(r Runner, aa *ui.KeyActions) error {
 			hk.Description,
 			gotoCmd(r, command, "", !hk.KeepHistory),
 			ui.ActionOpts{
-				Shared: true,
-				HotKey: true,
+				Shared:  true,
+				HotKey:  true,
+				Visible: true,
 			},
 		))
 	}

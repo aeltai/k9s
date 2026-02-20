@@ -481,6 +481,25 @@ func (t *TableData) Delete(newKeys sets.Set[string]) {
 	}
 }
 
+// InjectClusterColumn prepends a CLUSTER column to the header and each row,
+// and prefixes row IDs with the context name for multi-context tables.
+// ctxByRowID maps original row IDs to their source context name.
+func (t *TableData) InjectClusterColumn(ctxByRowID map[string]string) {
+	t.mx.Lock()
+	defer t.mx.Unlock()
+
+	clusterCol := HeaderColumn{Name: "CLUSTER"}
+	t.header = append(Header{clusterCol}, t.header...)
+
+	t.rowEvents.Range(func(i int, re RowEvent) bool {
+		ctx := ctxByRowID[re.Row.ID]
+		re.Row.Fields = append(Fields{ctx}, re.Row.Fields...)
+		re.Row.ID = JoinMultiContextID(ctx, re.Row.ID)
+		t.rowEvents.Set(i, re)
+		return true
+	})
+}
+
 // Diff checks if two tables are equal.
 func (t *TableData) Diff(t2 *TableData) bool {
 	if t2 == nil || t.namespace != t2.namespace || t.header.Diff(t2.header) {
