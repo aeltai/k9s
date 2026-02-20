@@ -85,10 +85,33 @@ func (d *Details) Init(_ context.Context) error {
 	d.cmdBuff.AddListener(d)
 
 	d.bindKeys()
+	d.loadHotKeys()
 	d.SetInputCapture(d.keyboard)
 	d.model.AddListener(d)
 
 	return nil
+}
+
+func (d *Details) loadHotKeys() {
+	hh := config.NewHotKeys()
+	if err := hh.Load(d.app.Config.ContextHotkeysPath()); err != nil {
+		return
+	}
+	for _, hk := range hh.HotKey {
+		key, err := asKey(hk.ShortCut)
+		if err != nil {
+			continue
+		}
+		command := hk.Command
+		d.actions.Add(key, ui.NewKeyActionWithOpts(
+			hk.Description,
+			func(*tcell.EventKey) *tcell.EventKey {
+				d.app.gotoResource(command, "", true, true)
+				return nil
+			},
+			ui.ActionOpts{HotKey: true, Visible: false},
+		))
+	}
 }
 
 // InCmdMode checks if prompt is active.

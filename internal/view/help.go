@@ -159,13 +159,12 @@ func (h *Help) showRk9s() model.MenuHints {
 		{Mnemonic: "Shift-2", Description: "Fleet Dashboard"},
 		{Mnemonic: "Shift-3", Description: "Rancher Dashboard"},
 		{Mnemonic: "Shift-4", Description: "Harvester Dashboard"},
-		{Mnemonic: "Shift-5", Description: "Nodes Dashboard"},
+		{Mnemonic: "Shift-5", Description: "Nodes (interactive)"},
 		{Mnemonic: "Shift-6", Description: "rk9s Status"},
 		{Mnemonic: "Shift-7", Description: "Contexts view"},
+		{Mnemonic: "Shift-8", Description: "etcd Dashboard"},
 		{Mnemonic: ":rk9s", Description: "Status & CLI check"},
 		// -- Multi-context [contexts view] --
-		{Mnemonic: "Shift-M", Description: "All Nodes [contexts]"},
-		{Mnemonic: "Shift-P", Description: "All Pods [contexts]"},
 		{Mnemonic: "Space", Description: "Toggle select [contexts]"},
 		{Mnemonic: "Ctrl-A", Description: "Select all [contexts]"},
 		// -- Rancher [clusters.mgmt.cattle.io] --
@@ -192,8 +191,12 @@ func (h *Help) showRk9s() model.MenuHints {
 		// -- Nodes [nodes] --
 		{Mnemonic: "Shift-C", Description: "RKE2/K3s config [nodes]"},
 		{Mnemonic: "Shift-D", Description: "Services [nodes]"},
-		{Mnemonic: "Shift-E", Description: "etcdctl [nodes]"},
+		{Mnemonic: "Shift-E", Description: "etcdctl health [nodes]"},
 		{Mnemonic: "Shift-P", Description: "crictl ps [nodes]"},
+		{Mnemonic: "Shift-G", Description: "Longhorn node info [nodes]"},
+		{Mnemonic: "Shift-N", Description: "etcd snapshot [nodes]"},
+		{Mnemonic: "Shift-F", Description: "etcd defrag [nodes]"},
+		{Mnemonic: "Shift-A", Description: "etcd alarm disarm [nodes]"},
 	}
 }
 

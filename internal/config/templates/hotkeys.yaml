@@ -4,8 +4,9 @@
 # Shift-1..5  Dashboards (Longhorn, Fleet, Rancher, Harvester, Nodes)
 # Shift-6     rk9s status (CLI check, plugins, nav help)
 # Shift-7     Contexts view (multi-context selection)
+# Shift-8     etcd Dashboard (health, members, db size, alarms)
 #
-# Or type: :longhorn :fleet :rancher :harvester :nodes-info :rk9s :context
+# Or type: :longhorn :fleet :rancher :harvester :nodes :rk9s :context :etcd
 #
 hotKeys:
   rk9s-longhorn:
@@ -26,8 +27,8 @@ hotKeys:
     command: harvester
   rk9s-nodes-info:
     shortCut: Shift-5
-    description: Nodes Dashboard
-    command: nodes-info
+    description: Nodes
+    command: nodes
   rk9s-status:
     shortCut: Shift-6
     description: rk9s Status
@@ -36,3 +37,7 @@ hotKeys:
     shortCut: Shift-7
     description: Contexts
     command: context
+  rk9s-etcd:
+    shortCut: Shift-8
+    description: etcd Dashboard
+    command: etcd

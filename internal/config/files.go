@@ -358,9 +358,10 @@ func EnsureDefaultHotkeys() error {
 		"rk9s-fleet":      {ShortCut: "Shift-2", Override: true, Description: "Fleet Dashboard", Command: "fleet"},
 		"rk9s-rancher":    {ShortCut: "Shift-3", Override: true, Description: "Rancher Dashboard", Command: "rancher"},
 		"rk9s-harvester":  {ShortCut: "Shift-4", Override: true, Description: "Harvester Dashboard", Command: "harvester"},
-		"rk9s-nodes-info": {ShortCut: "Shift-5", Override: true, Description: "Nodes Dashboard", Command: "nodes-info"},
+		"rk9s-nodes-info": {ShortCut: "Shift-5", Override: true, Description: "Nodes", Command: "nodes"},
 		"rk9s-status":     {ShortCut: "Shift-6", Override: true, Description: "rk9s Status", Command: "rk9s"},
 		"rk9s-contexts":   {ShortCut: "Shift-7", Override: true, Description: "Contexts", Command: "context"},
+		"rk9s-etcd":       {ShortCut: "Shift-8", Override: true, Description: "etcd Dashboard", Command: "etcd"},
 	}
 
 	existing := NewHotKeys()

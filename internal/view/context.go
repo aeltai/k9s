@@ -4,12 +4,10 @@
 package view
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
-	"strings"
 
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/config"
@@ -51,8 +49,6 @@ func (c *Context) bindKeys(aa *ui.KeyActions) {
 	aa.Add(ui.KeySpace, ui.NewKeyAction("ToggleSelect", c.toggleSelectCtx, true))
 	aa.Add(tcell.KeyCtrlA, ui.NewKeyAction("SelectAll", c.selectAllCtx, true))
 	aa.Add(tcell.KeyCtrlSpace, ui.NewKeyAction("SelectNone", c.selectNoneCtx, true))
-	aa.Add(ui.KeyShiftM, ui.NewKeyAction("All Nodes", c.showSelectedCtx, true))
-	aa.Add(ui.KeyShiftP, ui.NewKeyAction("All Pods", c.showSelectedPods, true))
 }
 
 func (c *Context) bindDangerousKeys(aa *ui.KeyActions) {
@@ -113,84 +109,6 @@ func (c *Context) selectNoneCtx(evt *tcell.EventKey) *tcell.EventKey {
 	c.App().Flash().Info("Cleared context selection")
 	c.Refresh()
 	return nil
-}
-
-func (c *Context) runMcView(sel []string, title string, kubectlArgs []string) {
-	c.App().Flash().Infof("Fetching %s across %d contexts...", title, len(sel))
-	script := mcParallelScript(sel, kubectlArgs)
-	go func() {
-		out, err := oneShoot(context.Background(), &shellOpts{
-			binary: "bash",
-			args:   []string{"-c", script},
-		})
-		if err != nil {
-			c.App().QueueUpdateDraw(func() {
-				c.App().Flash().Errf("Multi-context command failed: %s", err)
-			})
-			return
-		}
-		c.App().QueueUpdateDraw(func() {
-			// Prepend read-only hint: snapshot view has no row selection
-			header := "Snapshot (read-only). Use / to search. For selection and actions use Nodes or Pods view per context.\n\n"
-			details := NewDetails(c.App(), title, strings.Join(sel, ", "), contentTXT, true).
-				Update(header + out)
-			if e := c.App().inject(details, false); e != nil {
-				c.App().Flash().Err(e)
-			}
-		})
-	}()
-}
-
-func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
-	sel, _ := config.LoadSelectedContexts()
-	if len(sel) == 0 {
-		c.App().Flash().Warn("No contexts selected. Use Space to select contexts first.")
-		return nil
-	}
-	c.runMcView(sel, "Nodes", []string{"get", "nodes", "-o", "wide"})
-	return nil
-}
-
-func (c *Context) showSelectedPods(evt *tcell.EventKey) *tcell.EventKey {
-	sel, _ := config.LoadSelectedContexts()
-	if len(sel) == 0 {
-		c.App().Flash().Warn("No contexts selected. Use Space to select contexts first.")
-		return nil
-	}
-	c.runMcView(sel, "Pods", []string{"get", "pods", "-A", "--sort-by=.metadata.namespace"})
-	return nil
-}
-
-// mcParallelScript generates a bash script that runs kubectl across contexts
-// in parallel, merges output into a single table with a CLUSTER column.
-func mcParallelScript(contexts []string, kubectlArgs []string) string {
-	args := strings.Join(kubectlArgs, " ")
-	var b strings.Builder
-	b.WriteString("_tmpdir=$(mktemp -d)\n")
-	b.WriteString("trap 'rm -rf \"$_tmpdir\"' EXIT\n")
-	for _, ctx := range contexts {
-		b.WriteString(fmt.Sprintf(
-			"(kubectl %s --context %s 2>&1 > \"$_tmpdir/%s\" || echo '(unreachable)' > \"$_tmpdir/%s\") &\n",
-			args, ctx, ctx, ctx,
-		))
-	}
-	b.WriteString("wait\n")
-	b.WriteString("_header_done=false\n")
-	b.WriteString("for _ctx in")
-	for _, ctx := range contexts {
-		b.WriteString(fmt.Sprintf(" %s", ctx))
-	}
-	b.WriteString("; do\n")
-	b.WriteString("  while IFS= read -r _line || [ -n \"$_line\" ]; do\n")
-	b.WriteString("    if [ \"$_header_done\" = false ] && echo \"$_line\" | grep -qE '^NAME|^NAMESPACE'; then\n")
-	b.WriteString("      printf '%-25s %s\\n' 'CLUSTER' \"$_line\"\n")
-	b.WriteString("      _header_done=true\n")
-	b.WriteString("    elif ! echo \"$_line\" | grep -qE '^NAME|^NAMESPACE'; then\n")
-	b.WriteString("      [ -n \"$_line\" ] && printf '%-25s %s\\n' \"$_ctx\" \"$_line\"\n")
-	b.WriteString("    fi\n")
-	b.WriteString("  done < \"$_tmpdir/$_ctx\"\n")
-	b.WriteString("done\n")
-	return b.String()
 }
 
 func (c *Context) renameCmd(evt *tcell.EventKey) *tcell.EventKey {

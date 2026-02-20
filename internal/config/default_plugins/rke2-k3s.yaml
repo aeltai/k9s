@@ -211,3 +211,110 @@ plugins:
         echo ""
         echo "--- Replicas on This Node ---"
         kubectl get replicas.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,STATE:.status.currentState' 2>/dev/null | grep -E "NAME|$NAME" | head -20 || echo "  (no replicas)" | less -K
+  etcd-snapshot:
+    shortCut: Shift-N
+    description: etcd snapshot save
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== etcd Snapshot: $NAME ==="
+        echo ""
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
+          for d in /var/lib/rancher/rke2/server/tls/etcd /var/lib/rancher/k3s/server/tls/etcd /etc/kubernetes/pki/etcd; do
+            if [ -f "$d/server-ca.crt" ] || [ -f "$d/ca.crt" ]; then
+              export ETCDCTL_CACERT=$(ls "$d"/server-ca.crt "$d"/ca.crt 2>/dev/null | head -1)
+              export ETCDCTL_CERT=$(ls "$d"/server-client.crt "$d"/server.crt 2>/dev/null | head -1)
+              export ETCDCTL_KEY=$(ls "$d"/server-client.key "$d"/server.key 2>/dev/null | head -1)
+              break
+            fi
+          done
+          TS=$(date +%Y%m%d-%H%M%S)
+          SNAP="/tmp/etcd-snapshot-${TS}.db"
+          echo "Saving snapshot to $SNAP ..."
+          etcdctl snapshot save "$SNAP" 2>&1
+          echo ""
+          echo "--- Snapshot Status ---"
+          etcdctl snapshot status "$SNAP" --write-out=table 2>&1
+          echo ""
+          echo "Snapshot saved at: $SNAP (inside debug container)"
+          echo "To copy out, use: kubectl cp ..."
+        ' 2>/dev/null | less -K
+  etcd-defrag:
+    shortCut: Shift-F
+    override: true
+    description: etcd defragment
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== etcd Defrag: $NAME ==="
+        echo ""
+        echo "WARNING: Defragmentation causes a brief pause in etcd."
+        echo ""
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
+          for d in /var/lib/rancher/rke2/server/tls/etcd /var/lib/rancher/k3s/server/tls/etcd /etc/kubernetes/pki/etcd; do
+            if [ -f "$d/server-ca.crt" ] || [ -f "$d/ca.crt" ]; then
+              export ETCDCTL_CACERT=$(ls "$d"/server-ca.crt "$d"/ca.crt 2>/dev/null | head -1)
+              export ETCDCTL_CERT=$(ls "$d"/server-client.crt "$d"/server.crt 2>/dev/null | head -1)
+              export ETCDCTL_KEY=$(ls "$d"/server-client.key "$d"/server.key 2>/dev/null | head -1)
+              break
+            fi
+          done
+          echo "--- Before Defrag ---"
+          etcdctl endpoint status --write-out=table 2>&1
+          echo ""
+          echo "Running defrag..."
+          etcdctl defrag 2>&1
+          echo ""
+          echo "--- After Defrag ---"
+          etcdctl endpoint status --write-out=table 2>&1
+        ' 2>/dev/null | less -K
+  etcd-alarm-disarm:
+    shortCut: Shift-A
+    override: true
+    description: etcd alarm disarm
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== etcd Alarm Disarm: $NAME ==="
+        echo ""
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
+          for d in /var/lib/rancher/rke2/server/tls/etcd /var/lib/rancher/k3s/server/tls/etcd /etc/kubernetes/pki/etcd; do
+            if [ -f "$d/server-ca.crt" ] || [ -f "$d/ca.crt" ]; then
+              export ETCDCTL_CACERT=$(ls "$d"/server-ca.crt "$d"/ca.crt 2>/dev/null | head -1)
+              export ETCDCTL_CERT=$(ls "$d"/server-client.crt "$d"/server.crt 2>/dev/null | head -1)
+              export ETCDCTL_KEY=$(ls "$d"/server-client.key "$d"/server.key 2>/dev/null | head -1)
+              break
+            fi
+          done
+          echo "--- Current Alarms ---"
+          ALARMS=$(etcdctl alarm list 2>&1)
+          if [ -z "$ALARMS" ]; then
+            echo "  No alarms active. Nothing to disarm."
+          else
+            echo "$ALARMS"
+            echo ""
+            echo "Disarming all alarms..."
+            etcdctl alarm disarm 2>&1
+            echo ""
+            echo "--- Alarms After Disarm ---"
+            etcdctl alarm list 2>&1 || echo "  No alarms"
+          fi
+        ' 2>/dev/null | less -K

@@ -782,19 +782,18 @@ echo '  :longhorn     Longhorn storage dashboard'
 echo '  :fleet        Fleet continuous delivery dashboard'
 echo '  :rancher      Rancher management dashboard'
 echo '  :harvester    KubeVirt / Harvester VM dashboard'
-echo '  :nodes-info   Node infrastructure dashboard'
+echo '  :etcd         etcd health / members / alarms dashboard'
 echo ''
 echo '=== Navigation Hotkeys ==='
-echo '  Shift-1  → Longhorn Volumes    Shift-5  → Fleet Clusters'
-echo '  Shift-2  → Longhorn Nodes      Shift-6  → Rancher Clusters'
-echo '  Shift-3  → KubeVirt VMs        Shift-7  → Rancher Projects'
-echo '  Shift-4  → Fleet GitRepos      ?          Full Help'
+echo '  Shift-1  Longhorn Dashboard    Shift-5  Nodes (interactive)'
+echo '  Shift-2  Fleet Dashboard       Shift-6  rk9s Status'
+echo '  Shift-3  Rancher Dashboard     Shift-7  Contexts (multi-select)'
+echo '  Shift-4  Harvester Dashboard   Shift-8  etcd Dashboard'
+echo '  ?        Full Help'
 echo ''
 echo '=== Multi-Context (from :contexts view) ==='
 echo '  Space    Toggle context selection'
 echo '  Ctrl-A   Select all contexts'
-echo '  Shift-M  All Nodes across selected contexts'
-echo '  Shift-P  All Pods across selected contexts'
 `, pluginDir(config.AppName))
 	a.runDashScript("rk9s", ctxInfo, script)
 }
@@ -806,6 +805,10 @@ func (a *App) dashContexts() ([]string, string) {
 		return []string{ctx}, ctx
 	}
 	return sel, strings.Join(sel, ", ")
+}
+
+func ctxListArg(ctxs []string) string {
+	return strings.Join(ctxs, " ")
 }
 
 func mcKubectl(ctxs []string, args string) string {
@@ -862,6 +865,11 @@ echo '  Shift-S  Volume YAML'
 echo '=== Fleet Continuous Delivery Dashboard ==='
 echo 'Contexts: %s'
 echo ''
+if command -v fleet >/dev/null 2>&1; then
+  echo '--- fleet CLI status ---'
+  fleet --version 2>/dev/null || echo '  (version unknown)'
+  echo ''
+fi
 echo '--- GitRepos ---'
 %s
 echo ''
@@ -869,6 +877,9 @@ echo '--- BundleDeployment Summary ---'
 %s
 echo ''
 echo '--- Fleet Clusters ---'
+%s
+echo ''
+echo '--- Not Ready / Out-of-Sync ---'
 %s
 echo ''
 echo '--- Bundles (max 30) ---'
@@ -893,6 +904,7 @@ echo '  Shift-D  Drift detection     Shift-L  Fleet agent logs'
 			mcKubectl(ctxs, "get gitrepos.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,REPO:.spec.repo,BRANCH:.spec.branch,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady,STATE:.status.display.state'"),
 			mcKubectl(ctxs, "get bundledeployments.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.state' 2>/dev/null | awk 'NR==1{print; next} {count[$3]++} END{for(s in count) printf \"  %s: %d\\n\", s, count[s]}' || echo '  (no bundle deployments)'"),
 			mcKubectl(ctxs, "get clusters.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.display.readyBundles,STATE:.status.display.state'"),
+			mcKubectl(ctxs, "get bundledeployments.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATE:.status.display.state' --no-headers 2>/dev/null | grep -v Ready || echo '  All deployments ready!'"),
 			mcKubectl(ctxs, "get bundles.fleet.cattle.io -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' | head -30"),
 			mcKubectl(ctxs, "get clustergroups.fleet.cattle.io -A -o wide 2>/dev/null || echo '  (no cluster groups)'"),
 			mcKubectl(ctxs, "get pods -n cattle-fleet-system -l app=fleet-agent -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,RESTARTS:.status.containerStatuses[0].restartCount,AGE:.metadata.creationTimestamp' 2>/dev/null || echo '  (fleet-agent not found)'"),
@@ -974,46 +986,87 @@ echo '  m        Live migrate'
 			mcKubectl(ctxs, "get net-attach-def -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name'"),
 		))
 
-	case "nodes-info":
-		a.runDashScript("Nodes", subject, fmt.Sprintf(`
-echo '=== Node Infrastructure Dashboard ==='
+	case "etcd":
+		a.runDashScript("etcd", subject, fmt.Sprintf(`
+echo '=== etcd Dashboard ==='
 echo 'Contexts: %s'
 echo ''
-echo '--- Nodes ---'
+echo '--- etcd Pods ---'
 %s
 echo ''
-echo '--- Node Details ---'
-%s
+echo '--- etcd Health (via kubectl exec) ---'
+for _ctx in %s; do
+  echo "  [$_ctx]"
+  _pod=$(kubectl --context "$_ctx" -n kube-system get pods -l component=etcd -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+  if [ -z "$_pod" ]; then
+    _pod=$(kubectl --context "$_ctx" -n kube-system get pods -l tier=control-plane -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep etcd | head -1)
+  fi
+  if [ -n "$_pod" ]; then
+    kubectl --context "$_ctx" -n kube-system exec "$_pod" -- sh -c 'ETCDCTL_API=3 etcdctl --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key endpoint health 2>&1' 2>/dev/null || echo '    (exec failed – try kubectl debug node)'
+  else
+    echo '    (no etcd pod found – may be external etcd)'
+  fi
+done
 echo ''
-echo '--- Node Conditions ---'
-%s
+echo '--- etcd Member List ---'
+for _ctx in %s; do
+  echo "  [$_ctx]"
+  _pod=$(kubectl --context "$_ctx" -n kube-system get pods -l component=etcd -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+  if [ -z "$_pod" ]; then
+    _pod=$(kubectl --context "$_ctx" -n kube-system get pods -l tier=control-plane -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep etcd | head -1)
+  fi
+  if [ -n "$_pod" ]; then
+    kubectl --context "$_ctx" -n kube-system exec "$_pod" -- sh -c 'ETCDCTL_API=3 etcdctl --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key member list -w table 2>&1' 2>/dev/null || echo '    (member list failed)'
+  fi
+done
 echo ''
-echo '--- Node Resources ---'
-%s
+echo '--- etcd DB Size & Alarms ---'
+for _ctx in %s; do
+  echo "  [$_ctx]"
+  _pod=$(kubectl --context "$_ctx" -n kube-system get pods -l component=etcd -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+  if [ -z "$_pod" ]; then
+    _pod=$(kubectl --context "$_ctx" -n kube-system get pods -l tier=control-plane -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep etcd | head -1)
+  fi
+  if [ -n "$_pod" ]; then
+    kubectl --context "$_ctx" -n kube-system exec "$_pod" -- sh -c 'ETCDCTL_API=3 etcdctl --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key endpoint status -w table 2>&1' 2>/dev/null || echo '    (status failed)'
+    echo "    Alarms:"
+    kubectl --context "$_ctx" -n kube-system exec "$_pod" -- sh -c 'ETCDCTL_API=3 etcdctl --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt --key /etc/kubernetes/pki/etcd/server.key alarm list 2>&1' 2>/dev/null || echo '    (alarm list failed)'
+  fi
+done
 echo ''
-echo '--- Pod Count Per Node ---'
-%s
+echo '--- RKE2/K3s etcd (via kubectl debug) ---'
+for _ctx in %s; do
+  echo "  [$_ctx]"
+  _node=$(kubectl --context "$_ctx" get nodes -l node-role.kubernetes.io/control-plane= -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+  if [ -n "$_node" ]; then
+    echo "    node: $_node"
+    kubectl --context "$_ctx" debug "node/$_node" -it --image=alpine/k8s:1.31 -- sh -c '
+      crt=$(ls /host/var/lib/rancher/*/server/tls/etcd/server-client.crt 2>/dev/null | head -1)
+      key=$(ls /host/var/lib/rancher/*/server/tls/etcd/server-client.key 2>/dev/null | head -1)
+      ca=$(ls /host/var/lib/rancher/*/server/tls/etcd/server-ca.crt 2>/dev/null | head -1)
+      if [ -n "$crt" ]; then
+        ETCDCTL_API=3 etcdctl --cacert "$ca" --cert "$crt" --key "$key" --endpoints https://127.0.0.1:2379 endpoint health 2>&1
+        echo "---"
+        ETCDCTL_API=3 etcdctl --cacert "$ca" --cert "$crt" --key "$key" --endpoints https://127.0.0.1:2379 endpoint status -w table 2>&1
+        echo "---"
+        ETCDCTL_API=3 etcdctl --cacert "$ca" --cert "$crt" --key "$key" --endpoints https://127.0.0.1:2379 alarm list 2>&1
+      else
+        echo "    (RKE2/K3s etcd certs not found)"
+      fi
+    ' 2>/dev/null || echo '    (kubectl debug failed or not RKE2/K3s)'
+  fi
+done
 echo ''
-echo '--- Taints ---'
-%s
-echo ''
-echo '--- Node Labels (roles + topology) ---'
-%s
-echo ''
-echo 'Navigation: :nodes'
 echo 'Plugin shortcuts (in nodes view):'
-echo '  Shift-C  RKE2/K3s config     Shift-D  Node services (systemd)'
-echo '  Shift-P  crictl ps            Shift-E  etcdctl health'
-echo '  Shift-G  Longhorn node info'
+echo '  Shift-E  etcdctl health       Shift-N  etcd snapshot'
+echo '  Shift-F  etcd defrag           Shift-A  etcd alarm disarm'
 `,
 			subject,
-			mcKubectl(ctxs, "get nodes -o wide"),
-			mcKubectl(ctxs, "get nodes -o custom-columns='NAME:.metadata.name,OS:.status.nodeInfo.osImage,KERNEL:.status.nodeInfo.kernelVersion,RUNTIME:.status.nodeInfo.containerRuntimeVersion,KUBELET:.status.nodeInfo.kubeletVersion'"),
-			mcKubectl(ctxs, "get nodes -o custom-columns='NAME:.metadata.name,READY:.status.conditions[?(@.type==\"Ready\")].status,DISK:.status.conditions[?(@.type==\"DiskPressure\")].status,MEM:.status.conditions[?(@.type==\"MemoryPressure\")].status,PID:.status.conditions[?(@.type==\"PIDPressure\")].status'"),
-			mcKubectl(ctxs, "top nodes 2>/dev/null || echo '  (metrics-server not available)'"),
-			mcKubectl(ctxs, "get pods -A --field-selector=status.phase=Running -o custom-columns='NODE:.spec.nodeName' --no-headers 2>/dev/null | sort | uniq -c | sort -rn | awk '{printf \"  %-40s %s pods\\n\", $2, $1}'"),
-			mcKubectl(ctxs, "get nodes -o custom-columns='NAME:.metadata.name,TAINTS:.spec.taints[*].key'"),
-			mcKubectl(ctxs, "get nodes -o custom-columns='NAME:.metadata.name,ROLES:.metadata.labels.node-role\\.kubernetes\\.io/*,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone' 2>/dev/null || echo '  (labels query failed)'"),
+			mcKubectl(ctxs, "-n kube-system get pods -l component=etcd -o wide 2>/dev/null || echo '  (no etcd pods – may use embedded or external etcd)'"),
+			ctxListArg(ctxs),
+			ctxListArg(ctxs),
+			ctxListArg(ctxs),
+			ctxListArg(ctxs),
 		))
 	}
 }

@@ -83,6 +83,6 @@ var (
 		"fleet",
 		"rancher",
 		"harvester",
-		"nodes-info",
+		"etcd",
 	)
 )
