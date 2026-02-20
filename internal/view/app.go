@@ -760,7 +760,8 @@ echo '=== Selected Contexts ==='
 echo '  (none) Use :contexts, then Space to select'`
 	}
 
-	script := fmt.Sprintf(`echo '╔══════════════════════════════════════════════╗'
+	script := fmt.Sprintf(`(
+echo '╔══════════════════════════════════════════════╗'
 echo '║            rk9s status                        ║'
 echo '╚══════════════════════════════════════════════╝'
 echo ''
@@ -785,7 +786,12 @@ else
   echo '  (not found)'
 fi
 echo ''
-echo 'Press Escape to return. Type :vm or :vmi for VM views with virtctl shortcuts.'`, nodeBlock, pluginDir(config.AppName))
+echo '=== Quick Navigation ==='
+echo '  Shift-1  Longhorn Volumes    Shift-5  Fleet Clusters'
+echo '  Shift-2  Longhorn Nodes      Shift-6  Rancher Clusters'
+echo '  Shift-3  KubeVirt VMs        Shift-7  Rancher Projects'
+echo '  Shift-4  Fleet GitRepos      ?        Full Help'
+) | less -K`, nodeBlock, pluginDir(config.AppName))
 
 	opts := shellOpts{
 		binary:     "bash",

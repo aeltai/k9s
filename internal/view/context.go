@@ -50,8 +50,8 @@ func (c *Context) bindKeys(aa *ui.KeyActions) {
 	aa.Add(ui.KeySpace, ui.NewKeyAction("ToggleSelect", c.toggleSelectCtx, true))
 	aa.Add(tcell.KeyCtrlA, ui.NewKeyAction("SelectAll", c.selectAllCtx, true))
 	aa.Add(tcell.KeyCtrlSpace, ui.NewKeyAction("SelectNone", c.selectNoneCtx, true))
-	aa.Add(ui.KeyShiftM, ui.NewKeyAction("MC Nodes", c.showSelectedCtx, true))
-	aa.Add(ui.KeyShiftP, ui.NewKeyAction("MC Pods", c.showSelectedPods, true))
+	aa.Add(ui.KeyShiftM, ui.NewKeyAction("All Nodes", c.showSelectedCtx, true))
+	aa.Add(ui.KeyShiftP, ui.NewKeyAction("All Pods", c.showSelectedPods, true))
 }
 
 func (c *Context) bindDangerousKeys(aa *ui.KeyActions) {
@@ -161,9 +161,11 @@ func (c *Context) showSelectedPods(evt *tcell.EventKey) *tcell.EventKey {
 func mcParallelScript(contexts []string, kubectlArgs []string) string {
 	args := strings.Join(kubectlArgs, " ")
 	var b strings.Builder
+	// Wrap in subshell so we can pipe the whole thing to less
+	b.WriteString("(\n")
 	b.WriteString("_tmpdir=$(mktemp -d)\n")
 	b.WriteString("trap 'rm -rf \"$_tmpdir\"' EXIT\n")
-	b.WriteString(fmt.Sprintf("echo '=== rk9s multi-context (%d contexts, parallel) ==='\n", len(contexts)))
+	b.WriteString(fmt.Sprintf("echo '=== rk9s: %s across %d contexts ==='\necho ''\n", args, len(contexts)))
 	for _, ctx := range contexts {
 		b.WriteString(fmt.Sprintf(
 			"(kubectl %s --context %s 2>&1 > \"$_tmpdir/%s\" || echo '(unreachable)' > \"$_tmpdir/%s\") &\n",
@@ -171,7 +173,6 @@ func mcParallelScript(contexts []string, kubectlArgs []string) string {
 		))
 	}
 	b.WriteString("wait\n")
-	// Merge output with CLUSTER column: print header once, then all data rows
 	b.WriteString("_header_done=false\n")
 	b.WriteString("for _ctx in")
 	for _, ctx := range contexts {
@@ -187,6 +188,7 @@ func mcParallelScript(contexts []string, kubectlArgs []string) string {
 	b.WriteString("    fi\n")
 	b.WriteString("  done < \"$_tmpdir/$_ctx\"\n")
 	b.WriteString("done\n")
+	b.WriteString(") | less -K\n")
 	return b.String()
 }
 

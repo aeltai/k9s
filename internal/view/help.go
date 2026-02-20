@@ -182,8 +182,8 @@ func (h *Help) showRk9s() model.MenuHints {
 		{Mnemonic: "Shift-E", Description: "etcdctl health (node)"},
 		{Mnemonic: "Shift-G", Description: "GitRepo / Longhorn node"},
 		// -- Multi-context --
-		{Mnemonic: "Shift-M", Description: "MC Nodes (all contexts)"},
-		{Mnemonic: "Shift-P", Description: "MC Pods (all contexts)"},
+		{Mnemonic: "Shift-M", Description: "All Nodes (multi-ctx)"},
+		{Mnemonic: "Shift-P", Description: "All Pods (multi-ctx)"},
 		{Mnemonic: "Space", Description: "Toggle context select"},
 		{Mnemonic: "Ctrl-A", Description: "Select all contexts"},
 		// -- Hotkey navigation --

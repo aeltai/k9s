@@ -6,6 +6,7 @@ package view
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/config"
@@ -65,7 +66,7 @@ func (c *ClusterInfo) hasMetrics() bool {
 }
 
 func (c *ClusterInfo) layout() {
-	for row, section := range []string{"Context", "Cluster", "User", "K9s Rev", "K8s Rev", "CPU", "MEM"} {
+	for row, section := range []string{"Context", "Cluster", "User", "K9s Rev", "K8s Rev", "CPU", "MEM", "Contexts"} {
 		c.SetCell(row, 0, c.sectionCell(section))
 		c.SetCell(row, 1, c.infoCell(render.NAValue))
 	}
@@ -130,11 +131,17 @@ func (c *ClusterInfo) ClusterInfoChanged(prev, curr *model.ClusterMeta) {
 		row = c.setCell(row, curr.K8sVer)
 		if c.hasMetrics() {
 			row = c.setCell(row, ui.AsPercDelta(prev.Cpu, curr.Cpu))
-			_ = c.setCell(row, ui.AsPercDelta(prev.Mem, curr.Mem))
+			row = c.setCell(row, ui.AsPercDelta(prev.Mem, curr.Mem))
 			c.setDefCon(curr.Cpu, curr.Mem)
 		} else {
 			row = c.setCell(row, c.warnCell(render.NAValue, true))
-			_ = c.setCell(row, c.warnCell(render.NAValue, true))
+			row = c.setCell(row, c.warnCell(render.NAValue, true))
+		}
+		sel, _ := config.LoadSelectedContexts()
+		if len(sel) > 0 {
+			_ = c.setCell(row, fmt.Sprintf("[green::b]%s", strings.Join(sel, ", ")))
+		} else {
+			_ = c.setCell(row, "[gray::]none")
 		}
 		c.updateStyle()
 	})
