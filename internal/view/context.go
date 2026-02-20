@@ -50,7 +50,8 @@ func (c *Context) bindKeys(aa *ui.KeyActions) {
 	aa.Add(ui.KeySpace, ui.NewKeyAction("ToggleSelect", c.toggleSelectCtx, true))
 	aa.Add(tcell.KeyCtrlA, ui.NewKeyAction("SelectAll", c.selectAllCtx, true))
 	aa.Add(tcell.KeyCtrlSpace, ui.NewKeyAction("SelectNone", c.selectNoneCtx, true))
-	aa.Add(ui.KeyShiftM, ui.NewKeyAction("ShowSelected", c.showSelectedCtx, true))
+	aa.Add(ui.KeyShiftM, ui.NewKeyAction("MC Nodes", c.showSelectedCtx, true))
+	aa.Add(ui.KeyShiftP, ui.NewKeyAction("MC Pods", c.showSelectedPods, true))
 }
 
 func (c *Context) bindDangerousKeys(aa *ui.KeyActions) {
@@ -113,14 +114,8 @@ func (c *Context) selectNoneCtx(evt *tcell.EventKey) *tcell.EventKey {
 	return nil
 }
 
-func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
-	sel, _ := config.LoadSelectedContexts()
-	if len(sel) == 0 {
-		c.App().Flash().Warn("No contexts selected. Use Space to select contexts first.")
-		return nil
-	}
-
-	script := mcParallelScript(sel, []string{"get", "nodes", "-o", "wide"})
+func (c *Context) runMcCmd(sel []string, kubectlArgs []string) {
+	script := mcParallelScript(sel, kubectlArgs)
 	opts := shellOpts{
 		binary:     "bash",
 		background: false,
@@ -129,7 +124,7 @@ func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
 	suspend, errChan, _ := run(c.App(), &opts)
 	if !suspend {
 		c.App().Flash().Err(fmt.Errorf("failed to run multi-context command"))
-		return nil
+		return
 	}
 	go func() {
 		for e := range errChan {
@@ -138,19 +133,37 @@ func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
 			}
 		}
 	}()
+}
 
+func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
+	sel, _ := config.LoadSelectedContexts()
+	if len(sel) == 0 {
+		c.App().Flash().Warn("No contexts selected. Use Space to select contexts first.")
+		return nil
+	}
+	c.runMcCmd(sel, []string{"get", "nodes", "-o", "wide"})
+	return nil
+}
+
+func (c *Context) showSelectedPods(evt *tcell.EventKey) *tcell.EventKey {
+	sel, _ := config.LoadSelectedContexts()
+	if len(sel) == 0 {
+		c.App().Flash().Warn("No contexts selected. Use Space to select contexts first.")
+		return nil
+	}
+	c.runMcCmd(sel, []string{"get", "pods", "-A", "--sort-by=.metadata.namespace"})
 	return nil
 }
 
 // mcParallelScript generates a bash script that runs kubectl across contexts
-// in parallel (background jobs), captures output to temp files, then displays
-// results in order. Inspired by kubectl-mc.
+// in parallel, merges output into a single table with a CLUSTER column.
+// Inspired by kubectl-mc.
 func mcParallelScript(contexts []string, kubectlArgs []string) string {
 	args := strings.Join(kubectlArgs, " ")
 	var b strings.Builder
 	b.WriteString("_tmpdir=$(mktemp -d)\n")
 	b.WriteString("trap 'rm -rf \"$_tmpdir\"' EXIT\n")
-	b.WriteString(fmt.Sprintf("echo '=== rk9s multi-context (%d contexts, parallel) ==='\necho ''\n", len(contexts)))
+	b.WriteString(fmt.Sprintf("echo '=== rk9s multi-context (%d contexts, parallel) ==='\n", len(contexts)))
 	for _, ctx := range contexts {
 		b.WriteString(fmt.Sprintf(
 			"(kubectl %s --context %s 2>&1 > \"$_tmpdir/%s\" || echo '(unreachable)' > \"$_tmpdir/%s\") &\n",
@@ -158,12 +171,22 @@ func mcParallelScript(contexts []string, kubectlArgs []string) string {
 		))
 	}
 	b.WriteString("wait\n")
+	// Merge output with CLUSTER column: print header once, then all data rows
+	b.WriteString("_header_done=false\n")
+	b.WriteString("for _ctx in")
 	for _, ctx := range contexts {
-		b.WriteString(fmt.Sprintf(
-			"printf '\\n%s\\n%s\\n'\ncat \"$_tmpdir/%s\"\n",
-			ctx, strings.Repeat("-", len(ctx)), ctx,
-		))
+		b.WriteString(fmt.Sprintf(" %s", ctx))
 	}
+	b.WriteString("; do\n")
+	b.WriteString("  while IFS= read -r _line || [ -n \"$_line\" ]; do\n")
+	b.WriteString("    if [ \"$_header_done\" = false ] && echo \"$_line\" | grep -qE '^NAME|^NAMESPACE'; then\n")
+	b.WriteString("      printf '%-25s %s\\n' 'CLUSTER' \"$_line\"\n")
+	b.WriteString("      _header_done=true\n")
+	b.WriteString("    elif ! echo \"$_line\" | grep -qE '^NAME|^NAMESPACE'; then\n")
+	b.WriteString("      [ -n \"$_line\" ] && printf '%-25s %s\\n' \"$_ctx\" \"$_line\"\n")
+	b.WriteString("    fi\n")
+	b.WriteString("  done < \"$_tmpdir/$_ctx\"\n")
+	b.WriteString("done\n")
 	return b.String()
 }
 

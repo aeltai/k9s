@@ -1,20 +1,50 @@
-# rk9s hotkeys - custom shortcuts (plugins add these automatically)
-# Press ? to see RESOURCE section for view-specific plugin shortcuts
+# rk9s hotkeys – quick navigation to SUSE/Rancher views
+# These are auto-synced by rk9s on startup. Press ? to see all shortcuts.
 #
-# rk9s plugin shortcuts (when viewing matching resource):
-# NODES:    Shift-C RKE2/K3s config | Shift-D services | Shift-P crictl | Shift-E etcdctl
-# RANCHER:  Shift-O UI | Shift-F Fleet UI | Shift-K sync kubeconfig | Shift-J projects | Shift-U clusters
-# FLEET:    Shift-G GitRepo status | Shift-R reconcile | Shift-T bundle target
-# LONGHORN: Shift-L Longhorn UI | Shift-V volume YAML | Shift-T trim
-# HARVESTER: Shift-H UI
-# VIRTCTL:   Shift-S console | Shift-V VNC | Shift-W start | Shift-X stop | Shift-Z restart
-#            Shift-P pause | Shift-Q unpause | Shift-Y SSH | Shift-I guest info | m migrate
-# KUBEWARDEN: Shift-K policies | Shift-I inspect | Shift-S scaffold
-# INGRESS:   Shift-I Traefik/NGINX describe
+# NAVIGATION HOTKEYS (jump to view from anywhere):
+#   Shift-1  Longhorn Volumes
+#   Shift-2  Longhorn Nodes
+#   Shift-3  KubeVirt VMs
+#   Shift-4  Fleet GitRepos
+#   Shift-5  Fleet Clusters
+#   Shift-6  Rancher Clusters
+#   Shift-7  Rancher Projects
+#
+# MULTI-CONTEXT (from :contexts view):
+#   Space    Toggle context selection
+#   Ctrl-A   Select all contexts
+#   Shift-M  Show nodes across all selected contexts (with CLUSTER column)
+#   Shift-P  Show pods across all selected contexts (with CLUSTER column)
+#
+# PLUGIN SHORTCUTS (active on matching resource views):
+#   See ? Help → RK9S section for the full list
 #
 hotKeys:
-  # Examples...
-  # shift-0:
-  #   shortCut: Shift-0
-  #   description: View Workloads
-  #   command: wk k8s-app=cilium
+  rk9s-longhorn-volumes:
+    shortCut: Shift-1
+    description: Longhorn Volumes
+    command: volumes.longhorn.io
+  rk9s-longhorn-nodes:
+    shortCut: Shift-2
+    description: Longhorn Nodes
+    command: nodes.longhorn.io
+  rk9s-harvester-vms:
+    shortCut: Shift-3
+    description: VMs (KubeVirt)
+    command: virtualmachines.kubevirt.io
+  rk9s-fleet-gitrepos:
+    shortCut: Shift-4
+    description: Fleet GitRepos
+    command: gitrepos.fleet.cattle.io
+  rk9s-fleet-clusters:
+    shortCut: Shift-5
+    description: Fleet Clusters
+    command: clusters.fleet.cattle.io
+  rk9s-rancher-clusters:
+    shortCut: Shift-6
+    description: Rancher Clusters
+    command: clusters.management.cattle.io
+  rk9s-rancher-projects:
+    shortCut: Shift-7
+    description: Rancher Projects
+    command: projects.management.cattle.io

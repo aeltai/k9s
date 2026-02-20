@@ -737,14 +737,22 @@ echo '=== Selected Contexts ==='
 for ctx in %s; do printf '  [+] %%s\n' "$ctx"; done
 echo ''
 echo '=== Nodes across selected contexts (parallel) ==='
-_tmpdir=$(mktemp -d) && trap 'rm -rf "$_tmpdir"' EXIT
+_tmpdir=$(mktemp -d)
+trap 'rm -rf "$_tmpdir"' EXIT
 for ctx in %s; do
   (kubectl get nodes --context "$ctx" -o wide 2>&1 > "$_tmpdir/$ctx" || echo "(unreachable)" > "$_tmpdir/$ctx") &
 done
 wait
+_header_done=false
 for ctx in %s; do
-  printf '\n%%s\n%%s\n' "$ctx" "$(printf '%%0.s-' $(seq 1 ${#ctx}))"
-  cat "$_tmpdir/$ctx"
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    if [ "$_header_done" = false ] && echo "$_line" | grep -qE '^NAME'; then
+      printf '%%-25s %%s\n' 'CLUSTER' "$_line"
+      _header_done=true
+    elif ! echo "$_line" | grep -qE '^NAME'; then
+      [ -n "$_line" ] && printf '%%-25s %%s\n' "$ctx" "$_line"
+    fi
+  done < "$_tmpdir/$ctx"
 done`, ctxList, ctxList, ctxList)
 	} else {
 		nodeBlock = `

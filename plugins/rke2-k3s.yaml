@@ -1,6 +1,6 @@
-# RKE2 / K3s plugins for rk9s
+# RKE2 / K3s node plugins for rk9s
 # Node scope: $NAME is the node name
-# Requires: ssh access or kubectl debug
+# These plugins use kubectl debug for node access
 plugins:
   rke2-k3s-config:
     shortCut: Shift-C
@@ -13,21 +13,39 @@ plugins:
     args:
       - -c
       - |
-        echo "=== Node config: $NAME ==="
+        echo "=== Node Configuration: $NAME ==="
+        echo ""
         kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          echo "--- Distro Detection ---"
           if [ -f /etc/rancher/rke2/config.yaml ]; then
+            echo "Distro: RKE2"
+            echo ""
             echo "--- /etc/rancher/rke2/config.yaml ---"
             cat /etc/rancher/rke2/config.yaml
+            echo ""
+            echo "--- RKE2 Version ---"
+            rke2 --version 2>/dev/null || cat /usr/local/share/rke2/rke2-cis-sysctl.conf 2>/dev/null || echo "(cannot detect version)"
+            echo ""
+            echo "--- Token Hash ---"
+            sha256sum /etc/rancher/rke2/token 2>/dev/null | cut -d" " -f1 || echo "(no token file)"
           elif [ -f /etc/rancher/k3s/config.yaml ]; then
+            echo "Distro: K3s"
+            echo ""
             echo "--- /etc/rancher/k3s/config.yaml ---"
             cat /etc/rancher/k3s/config.yaml
+            echo ""
+            echo "--- K3s Version ---"
+            k3s --version 2>/dev/null || echo "(cannot detect version)"
           else
-            echo "No RKE2 or K3s config found"
+            echo "No RKE2 or K3s config found on this node"
+            echo ""
+            echo "Checking kubelet args..."
+            cat /var/lib/kubelet/kubeadm-flags.env 2>/dev/null || echo "(not a kubeadm node either)"
           fi
         ' 2>/dev/null | less -K
   node-distro-services:
     shortCut: Shift-D
-    description: Node services (rke2/k3s/containerd)
+    description: Node services status (systemd)
     scopes:
       - node
       - nodes
@@ -36,10 +54,28 @@ plugins:
     args:
       - -c
       - |
-        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c 'systemctl status rke2-server rke2-agent k3s containerd kubelet 2>/dev/null || true' 2>/dev/null | less -K || echo "Run: ssh $NAME 'systemctl status rke2-server rke2-agent k3s containerd kubelet'"
+        echo "=== Service Status: $NAME ==="
+        echo ""
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          for svc in rke2-server rke2-agent k3s containerd kubelet; do
+            status=$(systemctl is-active $svc 2>/dev/null)
+            if [ "$status" != "unknown" ] 2>/dev/null; then
+              printf "  %-20s %s\n" "$svc" "$status"
+            fi
+          done
+          echo ""
+          echo "--- Disk Usage ---"
+          df -h / /var/lib/rancher 2>/dev/null
+          echo ""
+          echo "--- Memory ---"
+          free -h 2>/dev/null
+          echo ""
+          echo "--- Uptime ---"
+          uptime 2>/dev/null
+        ' 2>/dev/null | less -K
   crictl-ps:
     shortCut: Shift-P
-    description: crictl ps on node
+    description: crictl ps – running containers on node
     scopes:
       - node
       - nodes
@@ -48,10 +84,17 @@ plugins:
     args:
       - -c
       - |
-        kubectl debug node/$NAME --context $CONTEXT -it --image=rancher/mirrored-pause:3.6 --target=containerd -- chroot /host crictl ps 2>/dev/null | less -K
+        echo "=== Containers on Node: $NAME ==="
+        echo ""
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          crictl ps --output table 2>/dev/null || echo "crictl not available"
+          echo ""
+          echo "--- Images ---"
+          crictl images --output table 2>/dev/null | head -20 || echo "crictl not available"
+        ' 2>/dev/null | less -K
   etcdctl-health:
     shortCut: Shift-E
-    description: etcdctl endpoint health
+    description: etcdctl endpoint health + status
     scopes:
       - node
       - nodes
@@ -60,4 +103,24 @@ plugins:
     args:
       - -c
       - |
-        kubectl debug node/$NAME --context $CONTEXT -it --image=rancher/mirrored-coreos-etcd:v3.5.9 --target=etcd -- sh -c 'ETCDCTL_ENDPOINTS=https://127.0.0.1:2379 ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key etcdctl endpoint health' 2>/dev/null | less -K
+        echo "=== etcd Health: $NAME ==="
+        echo ""
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
+          export ETCDCTL_CACERT=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
+          export ETCDCTL_CERT=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt
+          export ETCDCTL_KEY=/var/lib/rancher/rke2/server/tls/etcd/server-client.key
+          if [ ! -f "$ETCDCTL_CACERT" ]; then
+            export ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt
+            export ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt
+            export ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key
+          fi
+          echo "--- Endpoint Health ---"
+          etcdctl endpoint health 2>/dev/null || echo "etcdctl not found or certs not available (this may not be a control-plane node)"
+          echo ""
+          echo "--- Endpoint Status ---"
+          etcdctl endpoint status --write-out=table 2>/dev/null
+          echo ""
+          echo "--- Member List ---"
+          etcdctl member list --write-out=table 2>/dev/null
+        ' 2>/dev/null | less -K

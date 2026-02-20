@@ -1,35 +1,42 @@
 # Longhorn CLI (longhornctl) plugins for rk9s
 # Requires: longhornctl (https://github.com/longhorn/cli/releases)
-# Install: curl -LO "https://github.com/longhorn/cli/releases/download/v1.11.0/longhornctl-linux-amd64" && sudo install longhornctl-linux-amd64 /usr/local/bin/longhornctl
+# Navigation: Use Shift-1 to jump to Longhorn Volumes, Shift-2 for Longhorn Nodes
 plugins:
-  longhorn-open-ui:
+  longhorn-check:
     shortCut: Shift-L
-    description: Open Longhorn UI (port-forward + browser)
+    description: Longhorn preflight check (longhornctl)
     scopes:
       - volumes.longhorn.io
     command: bash
-    background: true
+    background: false
     args:
       - -c
       - |
-        kubectl get svc -n longhorn-system longhorn-frontend --context $CONTEXT >/dev/null 2>&1 || { echo "Longhorn not found"; exit 1; }
-        (kubectl port-forward -n longhorn-system svc/longhorn-frontend 9999:80 --context $CONTEXT &)
-        sleep 2
-        open "http://localhost:9999" 2>/dev/null || xdg-open "http://localhost:9999" 2>/dev/null || echo "Longhorn UI: http://localhost:9999 (port-forward running)"
+        if command -v longhornctl >/dev/null 2>&1; then
+          echo "=== Longhorn Environment Check ==="
+          longhornctl --kubeconfig $KUBECONFIG check preflight 2>&1 | less -K
+        else
+          echo "longhornctl not installed. Showing volume status via kubectl..."
+          echo ""
+          kubectl get volumes.longhorn.io -n longhorn-system --context $CONTEXT -o wide 2>&1 | less -K
+        fi
   longhorn-trim-volume:
     shortCut: Shift-T
     description: Trim Longhorn volume (reclaim space)
     scopes:
       - volumes.longhorn.io
-    command: longhornctl
+    command: bash
     background: false
     confirm: true
     args:
-      - --kubeconfig
-      - $KUBECONFIG
-      - trim
-      - volume
-      - $NAME
+      - -c
+      - |
+        if command -v longhornctl >/dev/null 2>&1; then
+          longhornctl --kubeconfig $KUBECONFIG trim volume $NAME
+        else
+          echo "longhornctl not installed. Cannot trim volume."
+          echo "Install: https://github.com/longhorn/cli/releases"
+        fi
   longhorn-get-replica:
     shortCut: Shift-R
     description: Longhorn replica info for volume
@@ -40,7 +47,12 @@ plugins:
     args:
       - -c
       - |
-        kubectl get volume -n longhorn-system $NAME -o yaml --context $CONTEXT | less -K
+        echo "=== Volume: $NAME ==="
+        echo "--- Replicas ---"
+        kubectl get replicas.longhorn.io -n longhorn-system --context $CONTEXT -l longhornvolume=$NAME -o wide 2>/dev/null
+        echo ""
+        echo "--- Engines ---"
+        kubectl get engines.longhorn.io -n longhorn-system --context $CONTEXT -l longhornvolume=$NAME -o wide 2>/dev/null | less -K
   longhorn-volume-yaml:
     shortCut: Shift-S
     override: true
@@ -65,7 +77,8 @@ plugins:
         if command -v longhornctl >/dev/null 2>&1; then
           longhornctl --kubeconfig $KUBECONFIG snapshot list $NAME 2>/dev/null | less -K
         else
-          kubectl get volumes.longhorn.io -n longhorn-system -o jsonpath='{range .items[?(@.metadata.name=="'$NAME'")]}{.status.snapshots}' --context $CONTEXT 2>/dev/null | jq . 2>/dev/null | less -K || echo "Install longhornctl for full snapshot list"
+          echo "longhornctl not installed. Showing volume snapshot info..."
+          kubectl get snapshots.longhorn.io -n longhorn-system --context $CONTEXT -l longhornvolume=$NAME -o wide 2>/dev/null | less -K
         fi
   longhorn-node-info:
     shortCut: Shift-G

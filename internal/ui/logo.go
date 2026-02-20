@@ -104,8 +104,13 @@ func (l *Logo) refreshLogo(c config.Color) {
 	l.mx.Lock()
 	defer l.mx.Unlock()
 	l.logo.Clear()
+	const rWidth = 5 // width of the "R" glyph in the ASCII art
 	for i, s := range LogoSmall {
-		_, _ = fmt.Fprintf(l.logo, "[%s::b]%s", c, s)
+		if i < 4 && len(s) > rWidth {
+			_, _ = fmt.Fprintf(l.logo, "[green::b]%s[%s::b]%s", s[:rWidth], c, s[rWidth:])
+		} else {
+			_, _ = fmt.Fprintf(l.logo, "[%s::b]%s", c, s)
+		}
 		if i+1 < len(LogoSmall) {
 			_, _ = fmt.Fprintf(l.logo, "\n")
 		}

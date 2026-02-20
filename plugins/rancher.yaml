@@ -1,83 +1,60 @@
 # Rancher plugins for rk9s
-# Uses KUBECONFIG + API tokens from active context
+# Uses rancher CLI + kubectl against management CRDs
+# Navigation: Use Shift-6 for Rancher Clusters, Shift-7 for Projects
 # Scoped to Rancher/Fleet management CRDs; override=true needed because
 # Shift keys collide with base table sort bindings on every table view
 plugins:
-  rancher-open-ui:
+  rancher-cluster-overview:
     shortCut: Shift-O
     override: true
-    description: Open Rancher UI in browser
+    description: Cluster overview (nodes, versions, conditions)
     scopes:
       - clusters.management.cattle.io
-      - projects.management.cattle.io
-      - settings.management.cattle.io
-      - users.management.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Rancher Managed Cluster: $NAME ==="
+        echo ""
+        echo "--- Cluster Info ---"
+        kubectl get clusters.management.cattle.io $NAME -o jsonpath='{
+          "Display Name: "}{.spec.displayName}{"
+          "}{  "Provider:     "}{.status.provider}{"
+          "}{  "K8s Version:  "}{.status.version.gitVersion}{"
+          "}{  "State:        "}{.status.conditions[?(@.type=="Ready")].status}{"
+          "}{  "Agent Image:  "}{.status.agentImage}{"
+          "}' --context $CONTEXT 2>/dev/null
+        echo ""
+        echo "--- Conditions ---"
+        kubectl get clusters.management.cattle.io $NAME -o jsonpath='{range .status.conditions[*]}  {.type}: {.status} ({.reason}) {.message}{"\n"}{end}' --context $CONTEXT 2>/dev/null
+        echo ""
+        echo "--- Nodes (via management API) ---"
+        kubectl get nodes.management.cattle.io -l management.cattle.io/cluster-name=$NAME -o wide --context $CONTEXT 2>/dev/null
+        echo "" | less -K
+  rancher-cluster-list:
+    shortCut: Shift-U
+    override: true
+    description: All clusters (rancher CLI or kubectl)
+    scopes:
+      - clusters.management.cattle.io
       - contexts
     command: bash
-    background: true
+    background: false
     args:
       - -c
       - |
-        server=$(kubectl config view --context $CONTEXT --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null | sed 's|https://api\.||' | sed 's|:6443||')
-        if [ -n "$server" ]; then
-          open "https://${server}/dashboard" 2>/dev/null || xdg-open "https://${server}/dashboard" 2>/dev/null || echo "Rancher server: https://${server}/dashboard"
+        echo "=== Rancher Managed Clusters ==="
+        echo ""
+        if command -v rancher >/dev/null 2>&1; then
+          rancher cluster ls 2>/dev/null | less -K
         else
-          echo "Could not determine Rancher server URL. Set RANCHER_SERVER or check kubeconfig."
-        fi
-  rancher-fleet-ui:
-    shortCut: Shift-F
-    override: true
-    description: Open Fleet UI in browser
-    scopes:
-      - clusters.fleet.cattle.io
-      - gitrepos.fleet.cattle.io
-      - bundles.fleet.cattle.io
-      - bundledeployments.fleet.cattle.io
-      - clustergroups.fleet.cattle.io
-    command: bash
-    background: true
-    args:
-      - -c
-      - |
-        server=$(kubectl config view --context $CONTEXT --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null | sed 's|https://api\.||' | sed 's|:6443||')
-        if [ -n "$server" ]; then
-          open "https://${server}/dashboard/c/_/fleet" 2>/dev/null || xdg-open "https://${server}/dashboard/c/_/fleet" 2>/dev/null || echo "Fleet UI: https://${server}/dashboard/c/_/fleet"
-        else
-          echo "Could not determine Rancher server URL."
+          kubectl get clusters.management.cattle.io --context $CONTEXT -o custom-columns='NAME:.metadata.name,DISPLAY:.spec.displayName,PROVIDER:.status.provider,K8S:.status.version.gitVersion,READY:.status.conditions[?(@.type=="Ready")].status,NODES:.status.allocatable.pods' 2>/dev/null | less -K
         fi
   rancher-sync-kubeconfig:
     shortCut: Shift-K
     override: true
-    description: Sync kubeconfig from Rancher
-    scopes:
-      - clusters.management.cattle.io
-      - contexts
-    command: rancher
-    background: false
-    confirm: false
-    args:
-      - context
-      - switch
-      - $CONTEXT
-  rancher-projects:
-    shortCut: Shift-J
-    override: true
-    description: List Rancher projects (management API)
-    scopes:
-      - clusters.management.cattle.io
-      - projects.management.cattle.io
-    command: kubectl
-    background: false
-    args:
-      - get
-      - projects.management.cattle.io
-      - -A
-      - --context
-      - $CONTEXT
-  rancher-clusters:
-    shortCut: Shift-U
-    override: true
-    description: List Rancher clusters (rancher CLI or kubectl)
+    description: Generate kubeconfig for cluster
     scopes:
       - clusters.management.cattle.io
       - contexts
@@ -87,8 +64,50 @@ plugins:
       - -c
       - |
         if command -v rancher >/dev/null 2>&1; then
-          rancher cluster ls 2>/dev/null || kubectl get clusters.management.cattle.io -A --context $CONTEXT 2>/dev/null | less -K
+          rancher cluster kf $NAME 2>/dev/null | less -K
         else
-          kubectl get clusters.management.cattle.io -A --context $CONTEXT 2>/dev/null | less -K
-        fi
-  # Shift-M multi-context is now built-in (context.go) with parallel execution
+          echo "Generating kubeconfig from Rancher API..."
+          kubectl get secret -n cattle-system --context $CONTEXT -o jsonpath='{range .items[?(@.type=="cluster.x-k8s.io/secret")]}{.metadata.name}{"\n"}{end}' 2>/dev/null
+          echo ""
+          echo "rancher CLI not found. Install: brew install rancher-cli"
+          echo "Then run: rancher cluster kf $NAME"
+        fi | less -K
+  rancher-projects:
+    shortCut: Shift-J
+    override: true
+    description: Projects & namespaces for cluster
+    scopes:
+      - clusters.management.cattle.io
+      - projects.management.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Projects for Cluster ==="
+        kubectl get projects.management.cattle.io -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,DISPLAY:.spec.displayName,CLUSTER:.spec.clusterName' 2>/dev/null | less -K
+  rancher-fleet-overview:
+    shortCut: Shift-F
+    override: true
+    description: Fleet status across clusters
+    scopes:
+      - clusters.fleet.cattle.io
+      - gitrepos.fleet.cattle.io
+      - bundles.fleet.cattle.io
+      - bundledeployments.fleet.cattle.io
+      - clustergroups.fleet.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Fleet Status ==="
+        echo ""
+        echo "--- GitRepos ---"
+        kubectl get gitrepos.fleet.cattle.io -A --context $CONTEXT -o wide 2>/dev/null
+        echo ""
+        echo "--- Fleet Clusters ---"
+        kubectl get clusters.fleet.cattle.io -A --context $CONTEXT -o wide 2>/dev/null
+        echo ""
+        echo "--- Bundles ---"
+        kubectl get bundles.fleet.cattle.io -A --context $CONTEXT -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' 2>/dev/null | less -K

@@ -15,6 +15,7 @@ import (
 	"github.com/adrg/xdg"
 	"github.com/derailed/k9s/internal/config/data"
 	"github.com/derailed/k9s/internal/slogs"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed default_plugins/*.yaml
@@ -125,6 +126,7 @@ func InitLocs() error {
 		return err
 	}
 	_ = EnsureDefaultPlugins() // copy embedded plugins on first run
+	_ = EnsureDefaultHotkeys() // sync rk9s navigation hotkeys
 	return nil
 }
 
@@ -343,6 +345,44 @@ func SaveSelectedContexts(ctxs []string) error {
 		return err
 	}
 	return os.WriteFile(path, []byte(strings.Join(ctxs, "\n")), 0600)
+}
+
+// EnsureDefaultHotkeys writes rk9s navigation hotkeys to the hotkeys config file.
+// Merges with existing user hotkeys, only adding new entries.
+func EnsureDefaultHotkeys() error {
+	if AppHotKeysFile == "" {
+		return nil
+	}
+	rk9sHotkeys := map[string]HotKey{
+		"rk9s-longhorn-volumes": {ShortCut: "Shift-1", Description: "Longhorn Volumes", Command: "volumes.longhorn.io"},
+		"rk9s-longhorn-nodes":   {ShortCut: "Shift-2", Description: "Longhorn Nodes", Command: "nodes.longhorn.io"},
+		"rk9s-harvester-vms":    {ShortCut: "Shift-3", Description: "VMs (KubeVirt)", Command: "virtualmachines.kubevirt.io"},
+		"rk9s-fleet-gitrepos":   {ShortCut: "Shift-4", Description: "Fleet GitRepos", Command: "gitrepos.fleet.cattle.io"},
+		"rk9s-fleet-clusters":   {ShortCut: "Shift-5", Description: "Fleet Clusters", Command: "clusters.fleet.cattle.io"},
+		"rk9s-rancher-clusters": {ShortCut: "Shift-6", Description: "Rancher Clusters", Command: "clusters.management.cattle.io"},
+		"rk9s-rancher-projects": {ShortCut: "Shift-7", Description: "Rancher Projects", Command: "projects.management.cattle.io"},
+	}
+
+	existing := NewHotKeys()
+	_ = existing.LoadHotKeys(AppHotKeysFile)
+
+	changed := false
+	for k, v := range rk9sHotkeys {
+		if _, ok := existing.HotKey[k]; !ok {
+			existing.HotKey[k] = v
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+
+	bb, err := yaml.Marshal(existing)
+	if err != nil {
+		return err
+	}
+	slog.Info("Synced rk9s hotkeys", slogs.Path, AppHotKeysFile)
+	return os.WriteFile(AppHotKeysFile, bb, 0644)
 }
 
 // EnsureDefaultPlugins syncs embedded rk9s plugins to the user's plugins dir.

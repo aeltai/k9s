@@ -1,36 +1,58 @@
 # Fleet plugins for rk9s
-# Requires: fleetctl or kubectl
+# Navigation: Use Shift-4 for Fleet GitRepos, Shift-5 for Fleet Clusters
+# Requires: fleet CLI (optional) or kubectl
 plugins:
   fleet-gitrepo-status:
     shortCut: Shift-G
-    description: Fleet GitRepo status
+    description: GitRepo status + conditions
     scopes:
       - gitrepos
-    command: kubectl
-    background: false
-    args:
-      - get
-      - gitrepo
-      - -n
-      - $NAMESPACE
-      - $NAME
-      - -o
-      - yaml
-      - --context
-      - $CONTEXT
-  fleet-gitrepo-reconcile:
-    shortCut: Shift-R
-    description: Force reconcile Fleet GitRepo
-    scopes:
       - gitrepos.fleet.cattle.io
     command: bash
     background: false
     args:
       - -c
-      - 'kubectl annotate gitrepo -n $NAMESPACE $NAME fleet.cattle.io/force-reconcile=$(date +%s) --overwrite --context $CONTEXT'
+      - |
+        echo "=== Fleet GitRepo: $NAME ==="
+        echo ""
+        echo "--- Summary ---"
+        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{
+          "Repo:        "}{.spec.repo}{"
+          "}{  "Branch:      "}{.spec.branch}{"
+          "}{  "Paths:       "}{.spec.paths}{"
+          "}{  "Targets:     "}{.spec.targets}{"
+          "}{  "Ready:       "}{.status.summary.ready}{"/"}{.status.summary.desiredReady}{"
+          "}{  "State:       "}{.status.display.state}{"
+          "}{  "Message:     "}{.status.display.message}{"
+          "}' --context $CONTEXT 2>/dev/null
+        echo ""
+        echo "--- Conditions ---"
+        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.conditions[*]}  {.type}: {.status} - {.message}{"\n"}{end}' 2>/dev/null
+        echo ""
+        echo "--- Resources ---"
+        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.resources[*]}  {.kind}/{.name} ({.state}){"\n"}{end}' 2>/dev/null | less -K
+  fleet-gitrepo-reconcile:
+    shortCut: Shift-R
+    description: Force reconcile Fleet GitRepo
+    scopes:
+      - gitrepos.fleet.cattle.io
+      - gitrepos
+    command: bash
+    background: false
+    confirm: true
+    args:
+      - -c
+      - |
+        echo "Force reconciling $NAME..."
+        kubectl annotate gitrepo -n $NAMESPACE $NAME fleet.cattle.io/force-reconcile=$(date +%s) --overwrite --context $CONTEXT
+        echo ""
+        echo "Reconciliation triggered. Checking status..."
+        sleep 2
+        kubectl get gitrepo -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='State: {.status.display.state}  Ready: {.status.summary.ready}/{.status.summary.desiredReady}'
+        echo ""
   fleet-target:
     shortCut: Shift-T
-    description: Fleet target (which clusters get bundle)
+    description: Bundle deployment targets
     scopes:
       - bundles.fleet.cattle.io
       - bundledeployments.fleet.cattle.io
@@ -39,8 +61,32 @@ plugins:
     args:
       - -c
       - |
+        echo "=== Bundle Targets: $NAME ==="
+        echo ""
         if command -v fleet >/dev/null 2>&1; then
-          fleet target $NAME --context $CONTEXT 2>/dev/null | less -K || kubectl get bundle -A -o wide --context $CONTEXT | grep -E "NAME|$NAME" | less -K
+          fleet target $NAME --context $CONTEXT 2>/dev/null | less -K
         else
-          kubectl get bundle -A -o wide --context $CONTEXT | less -K
+          echo "--- BundleDeployments ---"
+          kubectl get bundledeployments.fleet.cattle.io -A --context $CONTEXT -l fleet.cattle.io/bundle-name=$NAME -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,READY:.status.display.state,MESSAGE:.status.display.message' 2>/dev/null | less -K
         fi
+  fleet-cluster-status:
+    shortCut: Shift-C
+    override: true
+    description: Fleet cluster registration status
+    scopes:
+      - clusters.fleet.cattle.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== Fleet Cluster: $NAME ==="
+        kubectl get clusters.fleet.cattle.io -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{
+          "Display Name:     "}{.spec.displayName}{"
+          "}{  "Agent Namespace:  "}{.status.agent.namespace}{"
+          "}{  "Ready:            "}{.status.display.readyBundles}{"
+          "}{  "State:            "}{.status.display.state}{"
+          "}' 2>/dev/null
+        echo ""
+        echo "--- Conditions ---"
+        kubectl get clusters.fleet.cattle.io -n $NAMESPACE $NAME --context $CONTEXT -o jsonpath='{range .status.conditions[*]}  {.type}: {.status} ({.reason}){"\n"}{end}' 2>/dev/null | less -K

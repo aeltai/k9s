@@ -21,6 +21,7 @@ plugins:
     # Collections of views that support this shortcut. (You can use `all`)
     scopes:
     - virtualmachineinstance
+    - virtualmachines.kubevirt.io
     # Whether or not to run the command in background mode
     background: false
     # The command to run upon invocation.

@@ -1,20 +1,46 @@
-# Harvester UI plugin for rk9s
+# Harvester / KubeVirt VM management plugins for rk9s
+# Navigation: Use Shift-3 to jump to VM view
 # VM lifecycle commands (console, vnc, start, stop, etc.) are in virtctl.yaml
 plugins:
-  harvester-open-ui:
+  harvester-vm-overview:
     shortCut: Shift-H
-    description: Open Harvester UI in browser
+    description: VM overview (status, IPs, resources)
+    scopes:
+      - virtualmachines.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        echo "=== VM Overview: $NAME ==="
+        echo ""
+        echo "--- VM Status ---"
+        kubectl get vm $NAME -n $NAMESPACE --context $CONTEXT -o wide 2>/dev/null
+        echo ""
+        echo "--- VMI (running instance) ---"
+        kubectl get vmi $NAME -n $NAMESPACE --context $CONTEXT -o wide 2>/dev/null
+        echo ""
+        echo "--- Disks & Volumes ---"
+        kubectl get vm $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{range .spec.template.spec.volumes[*]}{.name}{"\t"}{.persistentVolumeClaim.claimName}{"\t"}{.containerDisk.image}{"\t"}{.cloudInitNoCloud.userData}{"\n"}{end}' 2>/dev/null
+        echo ""
+        echo "--- Network Interfaces ---"
+        kubectl get vmi $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{range .status.interfaces[*]}Name: {.name}  IP: {.ipAddress}  MAC: {.mac}{"\n"}{end}' 2>/dev/null
+        echo ""
+        echo "Press q to return" | less -K
+  harvester-vm-events:
+    shortCut: Shift-E
+    override: true
+    description: VM events & conditions
     scopes:
       - virtualmachines.kubevirt.io
       - virtualmachineinstances.kubevirt.io
     command: bash
-    background: true
+    background: false
     args:
       - -c
       - |
-        server=$(kubectl config view --context $CONTEXT --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null | sed 's|https://||' | sed 's|:6443||' | cut -d/ -f1)
-        if [ -n "$server" ]; then
-          open "https://${server}" 2>/dev/null || xdg-open "https://${server}" 2>/dev/null || echo "Harvester UI: https://${server}"
-        else
-          echo "Could not determine Harvester server URL."
-        fi
+        echo "=== Events for VM: $NAME ==="
+        kubectl get events -n $NAMESPACE --context $CONTEXT --field-selector involvedObject.name=$NAME --sort-by='.lastTimestamp' 2>/dev/null
+        echo ""
+        echo "=== Conditions ==="
+        kubectl get vm $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{range .status.conditions[*]}Type: {.type}  Status: {.status}  Reason: {.reason}  Message: {.message}{"\n"}{end}' 2>/dev/null | less -K
