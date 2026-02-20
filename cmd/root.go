@@ -27,8 +27,8 @@ import (
 
 const (
 	appName      = config.AppName
-	shortAppDesc = "A graphical CLI for your Kubernetes cluster management."
-	longAppDesc  = "K9s is a CLI to view and manage your Kubernetes clusters."
+	shortAppDesc = "A graphical CLI for SUSE/Rancher Kubernetes cluster management."
+	longAppDesc  = "rk9s is a CLI to view and manage your Rancher, RKE2, K3s, and SUSE Kubernetes clusters."
 )
 
 var _ data.KubeSettings = (*client.Config)(nil)

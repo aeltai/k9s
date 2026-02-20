@@ -1,0 +1,54 @@
+# Longhorn CLI (longhornctl) plugins for rk9s
+# Requires: longhornctl (https://github.com/longhorn/cli/releases)
+# Install: curl -LO "https://github.com/longhorn/cli/releases/download/v1.11.0/longhornctl-linux-amd64" && sudo install longhornctl-linux-amd64 /usr/local/bin/longhornctl
+plugins:
+  longhorn-open-ui:
+    shortCut: Shift-L
+    description: Open Longhorn UI (port-forward + browser)
+    scopes:
+      - volumes.longhorn.io
+      - all
+    command: bash
+    background: true
+    args:
+      - -c
+      - |
+        kubectl get svc -n longhorn-system longhorn-frontend --context $CONTEXT >/dev/null 2>&1 || { echo "Longhorn not found"; exit 1; }
+        (kubectl port-forward -n longhorn-system svc/longhorn-frontend 9999:80 --context $CONTEXT &)
+        sleep 2
+        open "http://localhost:9999" 2>/dev/null || xdg-open "http://localhost:9999" 2>/dev/null || echo "Longhorn UI: http://localhost:9999 (port-forward running)"
+  longhorn-trim-volume:
+    shortCut: Shift-T
+    description: Trim Longhorn volume (reclaim space)
+    scopes:
+      - volumes.longhorn.io
+    command: longhornctl
+    background: false
+    confirm: true
+    args:
+      - --kubeconfig
+      - $KUBECONFIG
+      - trim
+      - volume
+      - $NAME
+  longhorn-get-replica:
+    shortCut: Shift-R
+    description: Longhorn replica info for volume
+    scopes:
+      - volumes.longhorn.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        kubectl get volume -n longhorn-system $NAME -o yaml --context $CONTEXT | less -K
+  longhorn-volume-yaml:
+    shortCut: Shift-S
+    description: Longhorn Volume YAML + replicas
+    scopes:
+      - volumes.longhorn.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - kubectl get volume -n longhorn-system $NAME -o yaml --context $CONTEXT | less -K

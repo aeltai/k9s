@@ -41,15 +41,15 @@ func Test_initXDGLocs(t *testing.T) {
 		hkFile             string
 	}{
 		"check-env": {
-			configDir:          filepath.Join(tmp, "k9s-xdg", "config", "k9s"),
-			configFile:         filepath.Join(tmp, "k9s-xdg", "config", "k9s", data.MainConfigFile),
-			benchmarksDir:      filepath.Join(tmp, "k9s-xdg", "state", "k9s", "benchmarks"),
-			contextsDir:        filepath.Join(tmp, "k9s-xdg", "data", "k9s", "clusters"),
-			contextHotkeysFile: filepath.Join(tmp, "k9s-xdg", "data", "k9s", "clusters", "cl-1", "ct-1-1", "hotkeys.yaml"),
-			contextConfig:      filepath.Join(tmp, "k9s-xdg", "data", "k9s", "clusters", "cl-1", "ct-1-1", data.MainConfigFile),
-			dumpsDir:           filepath.Join(tmp, "k9s-xdg", "state", "k9s", "screen-dumps", "cl-1", "ct-1-1"),
-			benchDir:           filepath.Join(tmp, "k9s-xdg", "state", "k9s", "benchmarks", "cl-1", "ct-1-1"),
-			hkFile:             filepath.Join(tmp, "k9s-xdg", "config", "k9s", "hotkeys.yaml"),
+			configDir:          filepath.Join(tmp, "k9s-xdg", "config", AppName),
+			configFile:         filepath.Join(tmp, "k9s-xdg", "config", AppName, data.MainConfigFile),
+			benchmarksDir:      filepath.Join(tmp, "k9s-xdg", "state", AppName, "benchmarks"),
+			contextsDir:        filepath.Join(tmp, "k9s-xdg", "data", AppName, "clusters"),
+			contextHotkeysFile: filepath.Join(tmp, "k9s-xdg", "data", AppName, "clusters", "cl-1", "ct-1-1", "hotkeys.yaml"),
+			contextConfig:      filepath.Join(tmp, "k9s-xdg", "data", AppName, "clusters", "cl-1", "ct-1-1", data.MainConfigFile),
+			dumpsDir:           filepath.Join(tmp, "k9s-xdg", "state", AppName, "screen-dumps", "cl-1", "ct-1-1"),
+			benchDir:           filepath.Join(tmp, "k9s-xdg", "state", AppName, "benchmarks", "cl-1", "ct-1-1"),
+			hkFile:             filepath.Join(tmp, "k9s-xdg", "config", AppName, "hotkeys.yaml"),
 		},
 	}
 

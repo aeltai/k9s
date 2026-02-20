@@ -1,3 +1,4 @@
+# rk9s default aliases (SUSE/Rancher-aware)
 aliases:
   dp: deployments
   sec: v1/secrets
@@ -7,3 +8,23 @@ aliases:
   ro: roles
   rb: rolebindings
   np: networkpolicies
+  # Rancher / Fleet
+  gr: gitrepos.fleet.cattle.io
+  bd: bundledeployments.fleet.cattle.io
+  # RKE2 / K3s
+  hc: helmcharts.helm.cattle.io
+  hcc: helmchartconfigs.helm.cattle.io
+  pl: plans.rke.cattle.io
+  # Ingress
+  ir: ingressroutes.traefik.io
+  irtcp: ingressroutetcps.traefik.io
+  vs: virtualservers.k8s.nginx.org
+  vsr: virtualserverroutes.k8s.nginx.org
+  # Storage / Harvester
+  vol: volumes.longhorn.io
+  vm: virtualmachines.kubevirt.io
+  # Kubewarden
+  cap: clusteradmissionpolicies.policies.kubewarden.io
+  ap: admissionpolicies.policies.kubewarden.io
+  # Bundles
+  b: bundles.fleet.cattle.io

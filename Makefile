@@ -1,6 +1,6 @@
-NAME            := k9s
+NAME            := rk9s
 VERSION         ?= v0.50.18
-PACKAGE         := github.com/derailed/$(NAME)
+PACKAGE         := github.com/derailed/k9s
 OUTPUT_BIN      ?= execs/${NAME}
 GO_FLAGS        ?=
 GO_TAGS	        ?= netgo

@@ -1,0 +1,70 @@
+# Ingress (Traefik/NGINX) and storage plugins for rk9s
+plugins:
+  traefik-ingressroute:
+    shortCut: Shift-I
+    description: Describe Traefik IngressRoute
+    scopes:
+      - ingressroutes
+    command: kubectl
+    background: false
+    args:
+      - get
+      - ingressroute
+      - -n
+      - $NAMESPACE
+      - $NAME
+      - -o
+      - yaml
+      - --context
+      - $CONTEXT
+  nginx-virtualserver:
+    shortCut: Shift-I
+    description: Describe NGINX VirtualServer
+    scopes:
+      - virtualservers
+    command: kubectl
+    background: false
+    args:
+      - get
+      - virtualserver
+      - -n
+      - $NAMESPACE
+      - $NAME
+      - -o
+      - yaml
+      - --context
+      - $CONTEXT
+  longhorn-volume:
+    shortCut: Shift-V
+    description: Describe Longhorn Volume
+    scopes:
+      - volumes.longhorn.io
+    command: kubectl
+    background: false
+    args:
+      - get
+      - volume
+      - -n
+      - longhorn-system
+      - $NAME
+      - -o
+      - yaml
+      - --context
+      - $CONTEXT
+  helmchart-status:
+    shortCut: Shift-H
+    description: HelmChart CRD status
+    scopes:
+      - helmcharts
+    command: kubectl
+    background: false
+    args:
+      - get
+      - helmchart
+      - -n
+      - $NAMESPACE
+      - $NAME
+      - -o
+      - yaml
+      - --context
+      - $CONTEXT

@@ -1,6 +1,6 @@
 version: 2
 
-project_name: k9s
+project_name: rk9s
 
 before:
   hooks:
@@ -98,25 +98,13 @@ changelog:
       - "^docs:"
       - "^test:"
 
-brews:
-  - name: k9s
-    repository:
-      owner: derailed
-      name: homebrew-k9s
-    commit_author:
-      name: derailed
-      email: fernand@imhotep.io
-    directory: Formula
-    homepage: https://k9scli.io/
-    description: Kubernetes CLI To Manage Your Clusters In Style!
-    test: |
-      system "k9s version"
+# brews: add homebrew-aeltai/rk9s tap for: brew install aeltai/tap/rk9s
 
 nfpms:
   - file_name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
-    maintainer: Fernand Galiana
-    homepage: https://k9scli.io
-    description: Kubernetes CLI To Manage Your Clusters In Style!
+    maintainer: rk9s
+    homepage: https://github.com/aeltai/k9s
+    description: SUSE/Rancher Kubernetes TUI - k9s with Rancher/Fleet/Longhorn/Harvester plugins
     license: "Apache-2.0"
     formats:
       - deb
@@ -126,7 +114,7 @@ nfpms:
     section: utils
     contents:
       - src: ./LICENSE
-        dst: /usr/share/doc/k9s/copyright
+        dst: /usr/share/doc/rk9s/copyright
         file_info:
           mode: 0644
 

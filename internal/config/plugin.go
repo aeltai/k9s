@@ -71,8 +71,8 @@ func (p Plugins) Load(path string, loadExtra bool) error {
 	if !loadExtra {
 		return errs
 	}
-	// Load from XDG dirs
-	const k9sPluginsDir = "k9s/plugins"
+	// Load from XDG dirs (uses AppName for rk9s vs k9s)
+	k9sPluginsDir := filepath.Join(AppName, "plugins")
 	for _, dir := range append(xdg.DataDirs, xdg.DataHome, xdg.ConfigHome) {
 		path := filepath.Join(dir, k9sPluginsDir)
 		if err := p.loadDir(path); err != nil {

@@ -1,0 +1,47 @@
+# Rancher plugins for rk9s
+# Requires: rancher CLI, kubectl
+plugins:
+  rancher-open-ui:
+    shortCut: Shift-O
+    description: Open Rancher UI in browser
+    scopes:
+      - all
+    command: bash
+    background: true
+    args:
+      - -c
+      - |
+        server=$(kubectl config view --context $CONTEXT --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null | sed 's|https://api\.||' | sed 's|:6443||')
+        if [ -n "$server" ]; then
+          open "https://${server}/dashboard" 2>/dev/null || xdg-open "https://${server}/dashboard" 2>/dev/null || echo "Rancher server: https://${server}/dashboard"
+        else
+          echo "Could not determine Rancher server URL. Set RANCHER_SERVER or check kubeconfig."
+        fi
+  rancher-fleet-ui:
+    shortCut: Shift-F
+    description: Open Fleet UI in browser
+    scopes:
+      - all
+    command: bash
+    background: true
+    args:
+      - -c
+      - |
+        server=$(kubectl config view --context $CONTEXT --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null | sed 's|https://api\.||' | sed 's|:6443||')
+        if [ -n "$server" ]; then
+          open "https://${server}/dashboard/c/_/fleet" 2>/dev/null || xdg-open "https://${server}/dashboard/c/_/fleet" 2>/dev/null || echo "Fleet UI: https://${server}/dashboard/c/_/fleet"
+        else
+          echo "Could not determine Rancher server URL."
+        fi
+  rancher-sync-kubeconfig:
+    shortCut: Shift-K
+    description: Sync kubeconfig from Rancher
+    scopes:
+      - all
+    command: rancher
+    background: false
+    confirm: false
+    args:
+      - context
+      - switch
+      - $CONTEXT

@@ -1,0 +1,54 @@
+# Kubewarden CLI (kwctl) plugins for rk9s
+# Requires: kwctl (https://github.com/kubewarden/kwctl/releases)
+# Install: brew install kubewarden/kubewarden/kwctl  OR download from GitHub releases
+plugins:
+  kwctl-policies:
+    shortCut: Shift-P
+    description: List downloaded Kubewarden policies
+    scopes:
+      - all
+    command: kwctl
+    background: false
+    args:
+      - policies
+  kwctl-inspect-policy:
+    shortCut: Shift-I
+    description: Inspect Kubewarden policy (needs policy URI in CR)
+    scopes:
+      - clusteradmissionpolicies.policies.kubewarden.io
+      - admissionpolicies.policies.kubewarden.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        url=$(kubectl get clusteradmissionpolicy $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
+        if [ -z "$url" ]; then
+          url=$(kubectl get admissionpolicy -n $NAMESPACE $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
+        fi
+        if [ -n "$url" ]; then
+          kwctl inspect registry://${url#registry:} 2>/dev/null || kwctl inspect $url 2>/dev/null || echo "Policy: $url - run: kwctl inspect <policy-uri>"
+        else
+          echo "Could not get policy module from CR. Use kwctl inspect <policy-uri> manually."
+        fi
+  kwctl-scaffold-manifest:
+    shortCut: Shift-S
+    description: Scaffold policy manifest (policy URI from CR)
+    scopes:
+      - clusteradmissionpolicies.policies.kubewarden.io
+      - admissionpolicies.policies.kubewarden.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        url=$(kubectl get clusteradmissionpolicy $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
+        if [ -z "$url" ]; then
+          url=$(kubectl get admissionpolicy -n $NAMESPACE $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
+        fi
+        if [ -n "$url" ]; then
+          uri=${url#registry:}
+          kwctl scaffold manifest registry://$uri --type ClusterAdmissionPolicy -o /tmp/kw-$NAME.yaml 2>/dev/null && cat /tmp/kw-$NAME.yaml | less -K || echo "Run: kwctl scaffold manifest <policy-uri> --type ClusterAdmissionPolicy"
+        else
+          echo "Could not get policy module from CR."
+        fi

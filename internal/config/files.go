@@ -23,10 +23,10 @@ const (
 	// K9sEnvLogsDir represents k9s logs dir env var.
 	K9sEnvLogsDir = "K9S_LOGS_DIR"
 
-	// AppName tracks k9s app name.
-	AppName = "k9s"
+	// AppName tracks rk9s app name.
+	AppName = "rk9s"
 
-	K9sLogsFile = "k9s.log"
+	K9sLogsFile = "rk9s.log"
 )
 
 var (

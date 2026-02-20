@@ -1,0 +1,53 @@
+# Harvester CLI plugins for rk9s
+# Requires: harvester-cli (https://github.com/belgaied2/harvester-cli) or official harvester
+# Uses KUBECONFIG / HARVESTER_CONFIG for cluster access
+plugins:
+  harvester-open-ui:
+    shortCut: Shift-H
+    description: Open Harvester UI in browser
+    scopes:
+      - virtualmachines.kubevirt.io
+      - all
+    command: bash
+    background: true
+    args:
+      - -c
+      - |
+        server=$(kubectl config view --context $CONTEXT --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null | sed 's|https://||' | sed 's|:6443||' | cut -d/ -f1)
+        if [ -n "$server" ]; then
+          open "https://${server}" 2>/dev/null || xdg-open "https://${server}" 2>/dev/null || echo "Harvester UI: https://${server}"
+        else
+          echo "Could not determine Harvester server URL."
+        fi
+  harvester-vm-shell:
+    shortCut: Shift-S
+    description: VM shell (harvester-cli or kubectl virt)
+    scopes:
+      - virtualmachines.kubevirt.io
+    command: bash
+    background: false
+    args:
+      - -c
+      - |
+        if command -v harvester >/dev/null 2>&1; then
+          harvester vm shell $NAME -n ${NAMESPACE:-default}
+        elif command -v virtctl >/dev/null 2>&1; then
+          virtctl console $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          echo "Install harvester-cli or virtctl. kubectl virtctl console $NAME -n ${NAMESPACE:-default}"
+        fi
+  harvester-vm-vnc:
+    shortCut: Shift-V
+    description: VM VNC console (virtctl)
+    scopes:
+      - virtualmachines.kubevirt.io
+    command: bash
+    background: true
+    args:
+      - -c
+      - |
+        if command -v virtctl >/dev/null 2>&1; then
+          virtctl vnc $NAME -n ${NAMESPACE:-default} --kubeconfig=$KUBECONFIG
+        else
+          echo "Install virtctl: virtctl vnc $NAME -n ${NAMESPACE:-default}"
+        fi

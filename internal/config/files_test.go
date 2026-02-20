@@ -24,16 +24,16 @@ func TestInitLogLoc(t *testing.T) {
 		e   string
 	}{
 		"log-env": {
-			dir: "/tmp/test/k9s/logs",
-			e:   "/tmp/test/k9s/logs/k9s.log",
+			dir: "/tmp/test/rk9s/logs",
+			e:   "/tmp/test/rk9s/logs/rk9s.log",
 		},
 		"xdg-env": {
 			dir: "/tmp/test/xdg-state",
-			e:   "/tmp/test/xdg-state/k9s/k9s.log",
+			e:   "/tmp/test/xdg-state/rk9s/rk9s.log",
 		},
 		"cfg-env": {
-			dir: "/tmp/test/k9s-test",
-			e:   filepath.Join(tmp, "k9s.log"),
+			dir: "/tmp/test/rk9s-test",
+			e:   filepath.Join(tmp, "rk9s.log"),
 		},
 	}
 
