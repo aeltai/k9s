@@ -7,7 +7,6 @@ plugins:
     scopes:
       - virtualmachines.kubevirt.io
       - virtualmachineinstances.kubevirt.io
-      - all
     command: bash
     background: true
     args:

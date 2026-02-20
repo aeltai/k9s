@@ -2,9 +2,9 @@
 # Node scope: $NAME is the node name
 # Requires: ssh access or kubectl debug
 plugins:
-  rke2-config:
+  rke2-k3s-config:
     shortCut: Shift-C
-    description: View RKE2 config on node
+    description: View RKE2/K3s config on node
     scopes:
       - node
       - nodes
@@ -13,21 +13,18 @@ plugins:
     args:
       - -c
       - |
-        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host cat /etc/rancher/rke2/config.yaml 2>/dev/null || \
-        kubectl run -it --rm rke2-config-view --restart=Never --context $CONTEXT --overrides='{"spec":{"hostPID":true,"hostNetwork":true,"containers":[{"name":"rke2","image":"alpine:3.18","command":["nsenter","-t","1","-m","-u","-n","-i","--","cat","/etc/rancher/rke2/config.yaml"],"securityContext":{"privileged":true}}],"nodeSelector":{"kubernetes.io/hostname":"'$NAME'"}}}' 2>/dev/null | less -K
-  k3s-config:
-    shortCut: Shift-C
-    description: View K3s config on node
-    scopes:
-      - node
-      - nodes
-    command: bash
-    background: false
-    args:
-      - -c
-      - |
-        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host cat /etc/rancher/k3s/config.yaml 2>/dev/null || \
-        kubectl run -it --rm k3s-config-view --restart=Never --context $CONTEXT --overrides='{"spec":{"hostPID":true,"hostNetwork":true,"containers":[{"name":"k3s","image":"alpine:3.18","command":["nsenter","-t","1","-m","-u","-n","-i","--","cat","/etc/rancher/k3s/config.yaml"],"securityContext":{"privileged":true}}],"nodeSelector":{"kubernetes.io/hostname":"'$NAME'"}}}' 2>/dev/null | less -K
+        echo "=== Node config: $NAME ==="
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          if [ -f /etc/rancher/rke2/config.yaml ]; then
+            echo "--- /etc/rancher/rke2/config.yaml ---"
+            cat /etc/rancher/rke2/config.yaml
+          elif [ -f /etc/rancher/k3s/config.yaml ]; then
+            echo "--- /etc/rancher/k3s/config.yaml ---"
+            cat /etc/rancher/k3s/config.yaml
+          else
+            echo "No RKE2 or K3s config found"
+          fi
+        ' 2>/dev/null | less -K
   node-distro-services:
     shortCut: Shift-D
     description: Node services (rke2/k3s/containerd)

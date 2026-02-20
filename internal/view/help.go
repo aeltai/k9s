@@ -171,7 +171,7 @@ func (h *Help) showRk9s() model.MenuHints {
 		{Mnemonic: "Shift-W", Description: "VM start (vm)"},
 		{Mnemonic: "Shift-X", Description: "VM stop (vm/vmi)"},
 		{Mnemonic: "Shift-Z", Description: "VM restart (vm/vmi)"},
-		{Mnemonic: "Shift-P", Description: "VM pause (vm/vmi)"},
+		{Mnemonic: "Shift-P", Description: "Pause VM / crictl ps / kwctl"},
 		{Mnemonic: "Shift-Q", Description: "VM unpause (vm/vmi)"},
 		{Mnemonic: "Shift-Y", Description: "VM SSH (vm/vmi)"},
 		{Mnemonic: "Shift-I", Description: "VM guest info (vm/vmi)"},

@@ -6,7 +6,9 @@ plugins:
     shortCut: Shift-P
     description: List downloaded Kubewarden policies
     scopes:
-      - all
+      - clusteradmissionpolicies.policies.kubewarden.io
+      - admissionpolicies.policies.kubewarden.io
+      - policyservers.policies.kubewarden.io
     command: kwctl
     background: false
     args:

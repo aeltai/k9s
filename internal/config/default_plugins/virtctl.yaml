@@ -144,23 +144,6 @@ plugins:
           echo "Install virtctl: https://kubevirt.io/user-guide/user_workloads/virtctl_client_tool/"
           echo "  virtctl ssh root@vmi/$NAME -n ${NAMESPACE:-default}"
         fi
-  virtctl-migrate:
-    shortCut: m
-    description: Live-migrate VM
-    confirm: true
-    dangerous: true
-    scopes:
-      - virtualmachines.kubevirt.io
-      - virtualmachineinstances.kubevirt.io
-    command: virtctl
-    background: false
-    args:
-      - migrate
-      - $NAME
-      - -n
-      - $NAMESPACE
-      - --context
-      - $CONTEXT
   virtctl-guestosinfo:
     shortCut: Shift-I
     description: Guest OS info (needs agent)
