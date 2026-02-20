@@ -16,6 +16,11 @@
       "command": { "type": "string" },
       "background": { "type": "boolean" },
       "overwriteOutput": { "type": "boolean" },
+      "inView": { "type": "boolean" },
+      "pipes": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
       "args": {
         "type": "array",
         "items": { "type": ["string", "number"] }

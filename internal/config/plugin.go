@@ -41,6 +41,7 @@ type Plugin struct {
 	Background      bool     `yaml:"background"`
 	Dangerous       bool     `yaml:"dangerous"`
 	OverwriteOutput bool     `yaml:"overwriteOutput"`
+	InView          bool     `yaml:"inView"`
 }
 
 func (p Plugin) String() string {

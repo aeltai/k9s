@@ -354,18 +354,27 @@ func EnsureDefaultHotkeys() error {
 		return nil
 	}
 	rk9sHotkeys := map[string]HotKey{
-		"rk9s-longhorn":  {ShortCut: "Shift-1", Override: true, Description: "Longhorn Volumes", Command: "volumes.longhorn.io"},
-		"rk9s-fleet":     {ShortCut: "Shift-2", Override: true, Description: "Fleet GitRepos", Command: "gitrepos.fleet.cattle.io"},
-		"rk9s-rancher":   {ShortCut: "Shift-3", Override: true, Description: "Rancher Clusters", Command: "clusters.management.cattle.io"},
-		"rk9s-harvester": {ShortCut: "Shift-4", Override: true, Description: "Harvester VMs", Command: "virtualmachines.kubevirt.io"},
-		"rk9s-nodes":     {ShortCut: "Shift-5", Override: true, Description: "Nodes", Command: "nodes"},
-		"rk9s-status":    {ShortCut: "Shift-6", Override: true, Description: "rk9s Status", Command: "rk9s"},
-		"rk9s-contexts":  {ShortCut: "Shift-7", Override: true, Description: "Contexts", Command: "context"},
-		"rk9s-etcd":      {ShortCut: "Shift-8", Override: true, Description: "etcd Dashboard", Command: "etcd"},
+		"rk9s-home":      {ShortCut: "F1", Override: true, Description: "Home Dashboard", Command: "home"},
+		"rk9s-rancher":   {ShortCut: "F2", Override: true, Description: "Rancher Clusters", Command: "clusters.management.cattle.io"},
+		"rk9s-distro":    {ShortCut: "F3", Override: true, Description: "Distro (RKE2/K3s)", Command: "helmcharts.helm.cattle.io"},
+		"rk9s-etcd":      {ShortCut: "F4", Override: true, Description: "etcd Control Planes", Command: "nodes node-role.kubernetes.io/control-plane=true"},
+		"rk9s-nodes":     {ShortCut: "F5", Override: true, Description: "Nodes", Command: "nodes"},
+		"rk9s-fleet":     {ShortCut: "F6", Override: true, Description: "Fleet GitRepos", Command: "gitrepos.fleet.cattle.io"},
+		"rk9s-longhorn":  {ShortCut: "F7", Override: true, Description: "Longhorn Volumes", Command: "volumes.longhorn.io"},
+		"rk9s-harvester": {ShortCut: "F8", Override: true, Description: "KubeVirt VMs", Command: "virtualmachines.kubevirt.io"},
+		"rk9s-status":    {ShortCut: "F9", Override: true, Description: "rk9s Status", Command: "rk9s"},
+		"rk9s-contexts":  {ShortCut: "F10", Override: true, Description: "Contexts", Command: "context"},
 	}
 
 	existing := NewHotKeys()
 	_ = existing.LoadHotKeys(AppHotKeysFile)
+
+	oldKeys := []string{"rk9s-rke2k3s"}
+	for _, k := range oldKeys {
+		if _, ok := existing.HotKey[k]; ok {
+			delete(existing.HotKey, k)
+		}
+	}
 
 	changed := false
 	for k, v := range rk9sHotkeys {

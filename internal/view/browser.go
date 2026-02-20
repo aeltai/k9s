@@ -104,6 +104,7 @@ func (b *Browser) Init(ctx context.Context) error {
 	for _, f := range b.bindKeysFn {
 		f(b.Actions())
 	}
+	b.addCRDGroupKeys()
 	b.accessor, err = dao.AccessorFor(b.app.factory, b.GVR())
 	if err != nil {
 		return err
@@ -190,6 +191,72 @@ func (b *Browser) Start() {
 	}
 }
 
+func (b *Browser) addCRDGroupKeys() {
+	aliasKey := gvrToAliasKey(b.GVR().String())
+	if _, ok := crdGroupIndex[aliasKey]; !ok {
+		return
+	}
+	b.GetTable().TabHint = crdTabHint(b.GVR().String())
+	b.Actions().Add(tcell.KeyRight, ui.NewKeyAction("→ Next Tab", b.nextCRDCmd, true))
+	b.Actions().Add(tcell.KeyLeft, ui.NewKeyAction("← Prev Tab", b.prevCRDCmd, true))
+}
+
+func (b *Browser) nextCRDCmd(*tcell.EventKey) *tcell.EventKey {
+	aliasKey := gvrToAliasKey(b.GVR().String())
+	entry := crdGroupIndex[aliasKey]
+	grp := crdGroups[entry.group]
+	// Skip entries that aren't installed in the current cluster.
+	for step := 1; step < len(grp); step++ {
+		candidate := grp[(entry.pos+step)%len(grp)]
+		navCmd, labelSel, _ := parseCRDEntry(candidate)
+		if b.app.command.CanResolve(navCmd) {
+			b.app.gotoResource(navCmd, "", true, true)
+			b.applyCRDLabelFilter(labelSel)
+			return nil
+		}
+	}
+	b.App().Flash().Warnf("No other CRDs in this group are installed on the current cluster")
+	return nil
+}
+
+func (b *Browser) prevCRDCmd(*tcell.EventKey) *tcell.EventKey {
+	aliasKey := gvrToAliasKey(b.GVR().String())
+	entry := crdGroupIndex[aliasKey]
+	grp := crdGroups[entry.group]
+	for step := 1; step < len(grp); step++ {
+		candidate := grp[(entry.pos-step+len(grp))%len(grp)]
+		navCmd, labelSel, _ := parseCRDEntry(candidate)
+		if b.app.command.CanResolve(navCmd) {
+			b.app.gotoResource(navCmd, "", true, true)
+			b.applyCRDLabelFilter(labelSel)
+			return nil
+		}
+	}
+	b.App().Flash().Warnf("No other CRDs in this group are installed on the current cluster")
+	return nil
+}
+
+// applyCRDLabelFilter applies an optional label selector to the newly navigated-to
+// browser view (the current top of the content stack).
+func (b *Browser) applyCRDLabelFilter(labelSel string) {
+	if labelSel == "" {
+		return
+	}
+	top := b.app.Content.Top()
+	if top == nil {
+		return
+	}
+	nb, ok := top.(*Browser)
+	if !ok {
+		return
+	}
+	sel, err := labels.Parse(labelSel)
+	if err != nil {
+		return
+	}
+	nb.SetLabelSelector(sel, true)
+}
+
 func (b *Browser) activateMultiContext() {
 	mt, ok := b.GetModel().(*model.Table)
 	if !ok {
@@ -214,6 +281,7 @@ func (b *Browser) activateMultiContext() {
 		ui.KeyShiftC,
 		ui.NewKeyAction("Sort Cluster", b.GetTable().SortColCmd("CLUSTER", true), false),
 	)
+	b.GetTable().SetSortCol("CLUSTER", true)
 }
 
 // Stop terminates browser updates.
@@ -423,16 +491,13 @@ func (b *Browser) viewCmd(evt *tcell.EventKey) *tcell.EventKey {
 
 	ctxName, realPath := model1.SplitMultiContextID(path)
 	if ctxName != "" {
-		b.Stop()
-		defer b.Start()
 		ns, n := client.Namespaced(realPath)
 		args := []string{"get", b.GVR().FQN(n), "-o", "yaml"}
 		if ns != "" && ns != client.ClusterScope {
 			args = append(args, "-n", ns)
 		}
-		if err := runK(b.app, &shellOpts{clear: true, args: args, overrideContext: ctxName}); err != nil {
-			b.App().Flash().Errf("YAML view failed: %s", err)
-		}
+		title := fmt.Sprintf("YAML [%s] %s", ctxName, realPath)
+		runKInView(b.app, title, &shellOpts{args: args, overrideContext: ctxName})
 		return nil
 	}
 
@@ -494,17 +559,14 @@ func (b *Browser) enterCmd(evt *tcell.EventKey) *tcell.EventKey {
 	}
 
 	ctxName, realPath := model1.SplitMultiContextID(path)
-	if ctxName != "" && b.enterFn == nil {
-		b.Stop()
-		defer b.Start()
+	if ctxName != "" {
 		ns, n := client.Namespaced(realPath)
 		args := []string{"describe", b.GVR().FQN(n)}
 		if ns != "" && ns != client.ClusterScope {
 			args = append(args, "-n", ns)
 		}
-		if err := runK(b.app, &shellOpts{clear: true, args: args, overrideContext: ctxName}); err != nil {
-			b.App().Flash().Errf("Describe failed: %s", err)
-		}
+		title := fmt.Sprintf("Describe [%s] %s", ctxName, realPath)
+		runKInView(b.app, title, &shellOpts{args: args, overrideContext: ctxName})
 		return nil
 	}
 
@@ -555,16 +617,13 @@ func (b *Browser) describeCmd(evt *tcell.EventKey) *tcell.EventKey {
 
 	ctxName, realPath := model1.SplitMultiContextID(path)
 	if ctxName != "" {
-		b.Stop()
-		defer b.Start()
 		ns, n := client.Namespaced(realPath)
 		args := []string{"describe", b.GVR().FQN(n)}
 		if ns != "" && ns != client.ClusterScope {
 			args = append(args, "-n", ns)
 		}
-		if err := runK(b.app, &shellOpts{clear: true, args: args, overrideContext: ctxName}); err != nil {
-			b.App().Flash().Errf("Describe failed: %s", err)
-		}
+		title := fmt.Sprintf("Describe [%s] %s", ctxName, realPath)
+		runKInView(b.app, title, &shellOpts{args: args, overrideContext: ctxName})
 		return nil
 	}
 	describeResource(b.app, b.GetModel(), b.GVR(), path)

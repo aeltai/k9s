@@ -1,0 +1,425 @@
+# etcd plugins for rK9s
+# F4 = etcd Snapshots (tab 1) → ← Control Planes (tab 2)
+#
+# Control-plane tab shows filtered nodes. All Shift-* commands below
+# target the etcd pod running on the selected node via kubectl exec.
+# Works for RKE2, K3s, and kubeadm clusters.
+#
+# etcd pod naming convention: etcd-<node-name> in kube-system
+# RKE2 cert path: /var/lib/rancher/rke2/server/tls/etcd/
+# K3s  cert path: /var/lib/rancher/k3s/server/tls/etcd/
+# kubeadm path:   /etc/kubernetes/pki/etcd/
+
+plugins:
+
+  # ─── Helper macro: detect cert path and run etcdctl ──────────────
+  # Used by all node-scoped plugins below via the same pattern.
+  # ETCD_POD = etcd-$NAME, tries RKE2 → K3s → kubeadm cert paths.
+
+  # ─── Shift-I: Full etcd overview (health + members + db + alarms) ─
+  etcd-node-overview:
+    shortCut: Shift-I
+    override: true
+    description: etcd health, members, DB status & alarms
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        ETCD_POD="etcd-${NAME}"
+        CTX="--context ${CONTEXT}"
+
+        # Detect cert path
+        for D in \
+          /var/lib/rancher/rke2/server/tls/etcd \
+          /var/lib/rancher/k3s/server/tls/etcd \
+          /etc/kubernetes/pki/etcd; do
+          if kubectl exec -n kube-system "$ETCD_POD" $CTX -- \
+              etcdctl endpoint health \
+              --endpoints=https://127.0.0.1:2379 \
+              --cacert="$D/server-ca.crt" \
+              --cert="$D/server-client.crt" \
+              --key="$D/server-client.key" >/dev/null 2>&1; then
+            CA="$D/server-ca.crt"
+            CRT="$D/server-client.crt"
+            KEY_F="$D/server-client.key"
+            break
+          fi
+          # kubeadm uses different names
+          if kubectl exec -n kube-system "$ETCD_POD" $CTX -- \
+              etcdctl endpoint health \
+              --endpoints=https://127.0.0.1:2379 \
+              --cacert="$D/ca.crt" \
+              --cert="$D/server.crt" \
+              --key="$D/server.key" >/dev/null 2>&1; then
+            CA="$D/ca.crt"; CRT="$D/server.crt"; KEY_F="$D/server.key"
+            break
+          fi
+        done
+
+        if [ -z "$CA" ]; then
+          echo "ERROR: Could not connect to etcd on node '$NAME'."
+          echo "  - Is this a control-plane / etcd node?"
+          echo "  - etcd pod expected: kube-system/$ETCD_POD"
+          kubectl get pod -n kube-system "$ETCD_POD" $CTX 2>&1
+          exit 1
+        fi
+
+        EXEC="kubectl exec -n kube-system $ETCD_POD $CTX --"
+        ETCD="etcdctl --endpoints=https://127.0.0.1:2379 --cacert=$CA --cert=$CRT --key=$KEY_F"
+
+        echo "╔══════════════════════════════════════════════════════╗"
+        echo "║   etcd Overview — ${NAME}"
+        echo "╚══════════════════════════════════════════════════════╝"
+        echo ""
+
+        echo "── Node Info ────────────────────────────────────────────"
+        kubectl get node "$NAME" $CTX \
+          -o custom-columns='NAME:.metadata.name,STATUS:.status.conditions[-1].type,VERSION:.status.nodeInfo.kubeletVersion,CPU:.status.capacity.cpu,MEM:.status.capacity.memory,KERNEL:.status.nodeInfo.kernelVersion' \
+          2>/dev/null
+        echo ""
+
+        echo "── etcd Endpoint Health ─────────────────────────────────"
+        $EXEC $ETCD endpoint health --cluster 2>/dev/null
+        echo ""
+
+        echo "── etcd Members ─────────────────────────────────────────"
+        $EXEC $ETCD member list --write-out=table 2>/dev/null
+        echo ""
+
+        echo "── etcd Endpoint Status (DB size, leader, raft index) ───"
+        $EXEC $ETCD endpoint status --cluster --write-out=table 2>/dev/null
+        echo ""
+
+        echo "── DB Size & Fragmentation (PERCENTAGE NOT IN USE = fragmentation) ──"
+        $EXEC $ETCD endpoint status --cluster --write-out=table 2>/dev/null
+        echo "  (If fragmentation >30% consider Shift-F to defrag)"
+        echo ""
+
+        echo "── Alarms ───────────────────────────────────────────────"
+        ALARMS=$($EXEC $ETCD alarm list 2>/dev/null)
+        if [ -z "$ALARMS" ]; then
+          echo "  ✓ No alarms active"
+        else
+          echo "  ⚠ ALARMS DETECTED:"
+          echo "$ALARMS"
+        fi
+        echo ""
+
+        echo "── Rancher-managed etcd Snapshots ───────────────────────"
+        kubectl get etcdsnapshots.rke.cattle.io -A $CTX \
+          -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.spec.nodeName,SIZE:.spec.size,STORAGE:.spec.storageLocation,AGE:.metadata.creationTimestamp' \
+          2>/dev/null | head -15 || echo "  (no etcdsnapshots.rke.cattle.io CRD)"
+        echo ""
+
+        echo "── Available Actions ────────────────────────────────────"
+        echo "  Shift-E  Quick health check"
+        echo "  Shift-N  Save etcd snapshot  (confirm)"
+        echo "  Shift-F  Defragment etcd     (confirm, CAUTION)"
+        echo "  Shift-A  Disarm alarms        (confirm)"
+        echo "  Shift-B  Backup config & snapshot files"
+
+  # ─── Shift-E: Quick etcd health check ────────────────────────────
+  etcdctl-health:
+    shortCut: Shift-E
+    override: true
+    description: etcdctl health + members + DB size
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        ETCD_POD="etcd-${NAME}"
+        CTX="--context ${CONTEXT}"
+        CA="" CRT="" KEY_F=""
+        for D in \
+          /var/lib/rancher/rke2/server/tls/etcd \
+          /var/lib/rancher/k3s/server/tls/etcd; do
+          if kubectl exec -n kube-system "$ETCD_POD" $CTX -- \
+              etcdctl --endpoints=https://127.0.0.1:2379 \
+              --cacert="$D/server-ca.crt" --cert="$D/server-client.crt" --key="$D/server-client.key" \
+              endpoint health >/dev/null 2>&1; then
+            CA="$D/server-ca.crt"; CRT="$D/server-client.crt"; KEY_F="$D/server-client.key"; break
+          fi
+        done
+        if [ -z "$CA" ]; then
+          echo "Cannot reach etcd on node '$NAME' — not a control-plane/etcd node?"; exit 1
+        fi
+        EXEC="kubectl exec -n kube-system $ETCD_POD $CTX --"
+        ETCD="etcdctl --endpoints=https://127.0.0.1:2379 --cacert=$CA --cert=$CRT --key=$KEY_F"
+        echo "=== etcd Health: $NAME ==="
+        echo ""
+        echo "--- Endpoint Health ---"
+        $EXEC $ETCD endpoint health --cluster 2>/dev/null
+        echo ""
+        echo "--- Members ---"
+        $EXEC $ETCD member list --write-out=table 2>/dev/null
+        echo ""
+        echo "--- Endpoint Status ---"
+        $EXEC $ETCD endpoint status --cluster --write-out=table 2>/dev/null
+        echo ""
+        echo "--- Alarms ---"
+        A=$($EXEC $ETCD alarm list 2>/dev/null)
+        [ -z "$A" ] && echo "  ✓ No alarms" || echo "$A"
+
+  # ─── Shift-N: Save etcd snapshot ─────────────────────────────────
+  etcd-snapshot:
+    shortCut: Shift-N
+    override: true
+    description: Save etcd snapshot to /tmp on node
+    confirm: true
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        ETCD_POD="etcd-${NAME}"
+        CTX="--context ${CONTEXT}"
+        CA="" CRT="" KEY_F=""
+        for D in \
+          /var/lib/rancher/rke2/server/tls/etcd \
+          /var/lib/rancher/k3s/server/tls/etcd; do
+          if kubectl exec -n kube-system "$ETCD_POD" $CTX -- \
+              etcdctl --endpoints=https://127.0.0.1:2379 \
+              --cacert="$D/server-ca.crt" --cert="$D/server-client.crt" --key="$D/server-client.key" \
+              endpoint health >/dev/null 2>&1; then
+            CA="$D/server-ca.crt"; CRT="$D/server-client.crt"; KEY_F="$D/server-client.key"; break
+          fi
+        done
+        if [ -z "$CA" ]; then echo "Cannot reach etcd on '$NAME'"; exit 1; fi
+        EXEC="kubectl exec -n kube-system $ETCD_POD $CTX --"
+        ETCD="etcdctl --endpoints=https://127.0.0.1:2379 --cacert=$CA --cert=$CRT --key=$KEY_F"
+        TS=$(date +%Y%m%d-%H%M%S)
+        SNAP="/tmp/etcd-snap-${TS}.db"
+        echo "=== etcd Snapshot: $NAME ==="
+        echo "Saving snapshot to $SNAP inside the etcd container..."
+        echo ""
+        $EXEC $ETCD snapshot save "$SNAP" 2>&1
+        echo ""
+        echo "--- Snapshot Info ---"
+        $EXEC $ETCD snapshot status "$SNAP" --write-out=table 2>&1
+        echo ""
+        echo "Snapshot is in kube-system/$ETCD_POD:$SNAP"
+        echo "To copy out: kubectl cp kube-system/$ETCD_POD:$SNAP ./etcd-snap-${TS}.db $CTX"
+
+  # ─── Shift-F: Defragment etcd ─────────────────────────────────────
+  etcd-defrag:
+    shortCut: Shift-F
+    override: true
+    description: Defragment etcd (causes brief pause)
+    confirm: true
+    dangerous: true
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        ETCD_POD="etcd-${NAME}"
+        CTX="--context ${CONTEXT}"
+        CA="" CRT="" KEY_F=""
+        for D in \
+          /var/lib/rancher/rke2/server/tls/etcd \
+          /var/lib/rancher/k3s/server/tls/etcd; do
+          if kubectl exec -n kube-system "$ETCD_POD" $CTX -- \
+              etcdctl --endpoints=https://127.0.0.1:2379 \
+              --cacert="$D/server-ca.crt" --cert="$D/server-client.crt" --key="$D/server-client.key" \
+              endpoint health >/dev/null 2>&1; then
+            CA="$D/server-ca.crt"; CRT="$D/server-client.crt"; KEY_F="$D/server-client.key"; break
+          fi
+        done
+        if [ -z "$CA" ]; then echo "Cannot reach etcd on '$NAME'"; exit 1; fi
+        EXEC="kubectl exec -n kube-system $ETCD_POD $CTX --"
+        ETCD="etcdctl --endpoints=https://127.0.0.1:2379 --cacert=$CA --cert=$CRT --key=$KEY_F"
+        echo "=== etcd Defrag: $NAME ==="
+        echo "⚠  Defragmentation causes a brief etcd pause."
+        echo ""
+        echo "--- Before ---"
+        $EXEC $ETCD endpoint status --cluster --write-out=table 2>/dev/null
+        echo ""
+        echo "Running defrag on all members..."
+        $EXEC $ETCD defrag --cluster 2>&1
+        echo ""
+        echo "--- After ---"
+        $EXEC $ETCD endpoint status --cluster --write-out=table 2>/dev/null
+
+  # ─── Shift-A: Alarm list / disarm ────────────────────────────────
+  etcd-alarm-disarm:
+    shortCut: Shift-A
+    override: true
+    description: List & disarm etcd alarms
+    confirm: true
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        ETCD_POD="etcd-${NAME}"
+        CTX="--context ${CONTEXT}"
+        CA="" CRT="" KEY_F=""
+        for D in \
+          /var/lib/rancher/rke2/server/tls/etcd \
+          /var/lib/rancher/k3s/server/tls/etcd; do
+          if kubectl exec -n kube-system "$ETCD_POD" $CTX -- \
+              etcdctl --endpoints=https://127.0.0.1:2379 \
+              --cacert="$D/server-ca.crt" --cert="$D/server-client.crt" --key="$D/server-client.key" \
+              endpoint health >/dev/null 2>&1; then
+            CA="$D/server-ca.crt"; CRT="$D/server-client.crt"; KEY_F="$D/server-client.key"; break
+          fi
+        done
+        if [ -z "$CA" ]; then echo "Cannot reach etcd on '$NAME'"; exit 1; fi
+        EXEC="kubectl exec -n kube-system $ETCD_POD $CTX --"
+        ETCD="etcdctl --endpoints=https://127.0.0.1:2379 --cacert=$CA --cert=$CRT --key=$KEY_F"
+        echo "=== etcd Alarms: $NAME ==="
+        echo ""
+        echo "--- Current Alarms ---"
+        ALARMS=$($EXEC $ETCD alarm list 2>/dev/null)
+        if [ -z "$ALARMS" ]; then
+          echo "  ✓ No alarms active. Nothing to disarm."
+        else
+          echo "  ⚠ ALARMS:"
+          echo "$ALARMS"
+          echo ""
+          echo "Disarming all alarms..."
+          $EXEC $ETCD alarm disarm 2>&1
+          echo ""
+          echo "--- After Disarm ---"
+          $EXEC $ETCD alarm list 2>/dev/null || echo "  No alarms"
+        fi
+
+  # ─── Shift-B: Backup config & snapshot files ─────────────────────
+  etcd-backup-config:
+    shortCut: Shift-B
+    override: true
+    description: etcd backup config & local snapshot files
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== etcd Backup & Snapshot Config: $NAME ==="
+        echo ""
+        echo "--- Rancher-managed Snapshots (etcdsnapshots CRD) ---"
+        kubectl get etcdsnapshots.rke.cattle.io -A --context "$CONTEXT" \
+          -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.spec.nodeName,SIZE:.spec.size,STORAGE:.spec.storageLocation,AGE:.metadata.creationTimestamp' \
+          2>/dev/null | head -20 || echo "  (no etcdsnapshots.rke.cattle.io CRD)"
+        echo ""
+        echo "--- Node RKE2/K3s Config (etcd settings) ---"
+        kubectl debug node/"$NAME" --context "$CONTEXT" -it --image=alpine:3.18 -- \
+          chroot /host sh -c '
+            for cfg in /etc/rancher/rke2/config.yaml /etc/rancher/k3s/config.yaml; do
+              [ -f "$cfg" ] && echo "=== $cfg ===" && grep -E "etcd|snapshot|datastore|s3" "$cfg" 2>/dev/null && break
+            done
+            echo ""
+            echo "--- Snapshot Files ---"
+            for d in /var/lib/rancher/rke2/server/db/snapshots /var/lib/rancher/k3s/server/db/snapshots; do
+              if [ -d "$d" ]; then
+                echo "Directory: $d"
+                ls -lh "$d" 2>/dev/null | tail -12
+                break
+              fi
+            done
+            echo ""
+            echo "--- etcd Data Dir Size ---"
+            for d in /var/lib/rancher/rke2/server/db/etcd /var/lib/rancher/k3s/server/db/etcd; do
+              [ -d "$d" ] && du -sh "$d" 2>/dev/null && break
+            done
+          ' 2>/dev/null || echo "  (kubectl debug not available)"
+
+  # ─── Snapshot view: Shift-I overview ─────────────────────────────
+  etcd-snapshot-overview:
+    shortCut: Shift-I
+    override: true
+    description: etcd cluster overview (from snapshots view)
+    scopes:
+      - etcdsnapshots.rke.cattle.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        CTX="--context ${CONTEXT}"
+        echo "╔══════════════════════════════════════════════════════╗"
+        echo "║   etcd Cluster Overview"
+        echo "╚══════════════════════════════════════════════════════╝"
+        echo ""
+        echo "── Control-plane Nodes ──────────────────────────────────"
+        kubectl get nodes -l node-role.kubernetes.io/control-plane= $CTX \
+          -o custom-columns='NAME:.metadata.name,STATUS:.status.conditions[-1].type,VERSION:.status.nodeInfo.kubeletVersion,CPU:.status.capacity.cpu,MEM:.status.capacity.memory' \
+          2>/dev/null
+        echo ""
+        echo "── etcd Pods ────────────────────────────────────────────"
+        kubectl get pods -n kube-system -l component=etcd $CTX -o wide 2>/dev/null || \
+          echo "  (no etcd pods in kube-system — may be embedded or external)"
+        echo ""
+        echo "── etcd Snapshots (CRD) ─────────────────────────────────"
+        kubectl get etcdsnapshots.rke.cattle.io -A $CTX \
+          -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.spec.nodeName,SIZE:.spec.size,STORAGE:.spec.storageLocation,AGE:.metadata.creationTimestamp' \
+          2>/dev/null | head -20
+        echo ""
+        echo "── Quick Health (via etcd pod) ──────────────────────────"
+        NODE=$(kubectl get nodes -l node-role.kubernetes.io/control-plane= $CTX \
+          -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -n "$NODE" ]; then
+          ETCD_POD="etcd-$NODE"
+          CA="" CRT="" KEY_F=""
+          for D in /var/lib/rancher/rke2/server/tls/etcd /var/lib/rancher/k3s/server/tls/etcd; do
+            if kubectl exec -n kube-system "$ETCD_POD" $CTX -- \
+                etcdctl --endpoints=https://127.0.0.1:2379 \
+                --cacert="$D/server-ca.crt" --cert="$D/server-client.crt" --key="$D/server-client.key" \
+                endpoint health >/dev/null 2>&1; then
+              CA="$D/server-ca.crt"; CRT="$D/server-client.crt"; KEY_F="$D/server-client.key"; break
+            fi
+          done
+          if [ -n "$CA" ]; then
+            EXEC="kubectl exec -n kube-system $ETCD_POD $CTX --"
+            ETCD="etcdctl --endpoints=https://127.0.0.1:2379 --cacert=$CA --cert=$CRT --key=$KEY_F"
+            $EXEC $ETCD endpoint health --cluster 2>/dev/null
+            echo ""
+            $EXEC $ETCD endpoint status --cluster --write-out=table 2>/dev/null
+          else
+            echo "  (etcdctl not reachable — are certs at expected path?)"
+          fi
+        else
+          echo "  (no control-plane node found)"
+        fi
+        echo ""
+        echo "── Tip: Press → to switch to Control-Plane Nodes tab ────"
+
+  # ─── Snapshot YAML detail ─────────────────────────────────────────
+  etcd-snapshot-detail:
+    shortCut: Shift-Y
+    override: true
+    description: Snapshot full YAML
+    scopes:
+      - etcdsnapshots.rke.cattle.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - kubectl --context "$CONTEXT" get etcdsnapshots.rke.cattle.io "$NAME" -n "$NAMESPACE" -o yaml 2>/dev/null

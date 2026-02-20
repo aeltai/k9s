@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	podCmd = "v1/pods"
-	ctxCmd = "ctx"
+	podCmd  = "v1/pods"
+	ctxCmd  = "ctx"
+	homeCmd = "home"
 )
 
 var (
@@ -51,6 +52,15 @@ func (c *Command) AliasesFor(gvr *client.GVR) sets.Set[string] {
 		return sets.New[string]()
 	}
 	return c.alias.AliasesFor(gvr)
+}
+
+// CanResolve returns true if the given command string maps to a known resource.
+func (c *Command) CanResolve(s string) bool {
+	if c.alias == nil {
+		return false
+	}
+	_, ok := c.alias.Resolve(cmd.NewInterpreter(s))
+	return ok
 }
 
 // Init initializes the command.
@@ -248,7 +258,7 @@ func (c *Command) defaultCmd(isRoot bool) error {
 
 	defCmd := podCmd
 	if isRoot {
-		defCmd = ctxCmd
+		defCmd = homeCmd
 	}
 	p := cmd.NewInterpreter(c.app.Config.ActiveView())
 	if p.IsBlank() {

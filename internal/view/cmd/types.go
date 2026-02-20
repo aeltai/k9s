@@ -80,5 +80,7 @@ var (
 	)
 	rk9sDashCmd = sets.New(
 		"etcd",
+		"home",
+		"rke2k3s",
 	)
 )

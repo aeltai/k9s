@@ -1,7 +1,9 @@
 # Kubewarden CLI (kwctl) plugins for rk9s
 # Requires: kwctl (https://github.com/kubewarden/kwctl/releases)
 # Install: brew install kubewarden/kubewarden/kwctl  OR download from GitHub releases
+# Tabs: 1=ClusterAdmissionPolicies 2=AdmissionPolicies 3=PolicyServers
 plugins:
+  # CRD cycling via Left/Right arrow keys is built-in
   kwctl-policies:
     shortCut: Shift-P
     description: List downloaded Kubewarden policies
@@ -9,18 +11,27 @@ plugins:
       - clusteradmissionpolicies.policies.kubewarden.io
       - admissionpolicies.policies.kubewarden.io
       - policyservers.policies.kubewarden.io
-    command: kwctl
+    command: bash
     background: false
+    inView: true
     args:
-      - policies
+      - -c
+      - |
+        if command -v kwctl >/dev/null 2>&1; then
+          kwctl policies 2>&1
+        else
+          echo "kwctl not installed."
+          echo "Install: brew install kubewarden/kubewarden/kwctl"
+        fi
   kwctl-inspect-policy:
     shortCut: Shift-I
-    description: Inspect Kubewarden policy (needs policy URI in CR)
+    description: Inspect Kubewarden policy
     scopes:
       - clusteradmissionpolicies.policies.kubewarden.io
       - admissionpolicies.policies.kubewarden.io
     command: bash
     background: false
+    inView: true
     args:
       - -c
       - |
@@ -28,20 +39,21 @@ plugins:
         if [ -z "$url" ]; then
           url=$(kubectl get admissionpolicy -n $NAMESPACE $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
         fi
-        if [ -n "$url" ]; then
+        if [ -n "$url" ] && command -v kwctl >/dev/null 2>&1; then
           kwctl inspect registry://${url#registry:} 2>/dev/null || kwctl inspect $url 2>/dev/null || echo "Policy: $url - run: kwctl inspect <policy-uri>"
         else
-          echo "Could not get policy module from CR. Use kwctl inspect <policy-uri> manually."
+          echo "Could not get policy module from CR, or kwctl not installed."
         fi
   kwctl-scaffold-manifest:
     shortCut: Shift-S
     override: true
-    description: Scaffold policy manifest (policy URI from CR)
+    description: Scaffold policy manifest
     scopes:
       - clusteradmissionpolicies.policies.kubewarden.io
       - admissionpolicies.policies.kubewarden.io
     command: bash
     background: false
+    inView: true
     args:
       - -c
       - |
@@ -49,9 +61,78 @@ plugins:
         if [ -z "$url" ]; then
           url=$(kubectl get admissionpolicy -n $NAMESPACE $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
         fi
-        if [ -n "$url" ]; then
+        if [ -n "$url" ] && command -v kwctl >/dev/null 2>&1; then
           uri=${url#registry:}
-          kwctl scaffold manifest registry://$uri --type ClusterAdmissionPolicy -o /tmp/kw-$NAME.yaml 2>/dev/null && cat /tmp/kw-$NAME.yaml | less -K || echo "Run: kwctl scaffold manifest <policy-uri> --type ClusterAdmissionPolicy"
+          kwctl scaffold manifest registry://$uri --type ClusterAdmissionPolicy -o /tmp/kw-$NAME.yaml 2>/dev/null && cat /tmp/kw-$NAME.yaml || echo "Failed to scaffold."
         else
-          echo "Could not get policy module from CR."
+          echo "Could not get policy module or kwctl not installed."
         fi
+  kwctl-verify-policy:
+    shortCut: Shift-V
+    override: true
+    description: Verify policy signatures
+    scopes:
+      - clusteradmissionpolicies.policies.kubewarden.io
+      - admissionpolicies.policies.kubewarden.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        url=$(kubectl get clusteradmissionpolicy $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
+        if [ -z "$url" ]; then
+          url=$(kubectl get admissionpolicy -n $NAMESPACE $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
+        fi
+        if [ -n "$url" ] && command -v kwctl >/dev/null 2>&1; then
+          echo "=== Verifying policy: $url ==="
+          kwctl verify registry://${url#registry:} 2>&1
+        else
+          echo "Could not get policy module or kwctl not installed."
+        fi
+  kwctl-pull-policy:
+    shortCut: Shift-D
+    override: true
+    description: Pull policy to local store
+    scopes:
+      - clusteradmissionpolicies.policies.kubewarden.io
+      - admissionpolicies.policies.kubewarden.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        url=$(kubectl get clusteradmissionpolicy $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
+        if [ -z "$url" ]; then
+          url=$(kubectl get admissionpolicy -n $NAMESPACE $NAME -o jsonpath='{.spec.module}' --context $CONTEXT 2>/dev/null)
+        fi
+        if [ -n "$url" ] && command -v kwctl >/dev/null 2>&1; then
+          echo "Pulling policy: $url"
+          kwctl pull registry://${url#registry:} 2>&1
+        else
+          echo "Could not get policy module or kwctl not installed."
+        fi
+  policyserver-status:
+    shortCut: Shift-O
+    override: true
+    description: PolicyServer status
+    scopes:
+      - policyservers.policies.kubewarden.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== PolicyServer: $NAME ==="
+        kubectl get policyservers.policies.kubewarden.io $NAME --context $CONTEXT -o jsonpath='{
+          "Replicas: "}{.spec.replicas}{"\n"}{
+          "Image:    "}{.spec.image}{"\n"}{
+          }' 2>/dev/null
+        echo ""
+        echo "--- Conditions ---"
+        kubectl get policyservers.policies.kubewarden.io $NAME --context $CONTEXT -o jsonpath='{range .status.conditions[*]}  {.type}: {.status} ({.reason}){"\n"}{end}' 2>/dev/null
+        echo ""
+        echo "--- Policies on this server ---"
+        kubectl get clusteradmissionpolicies.policies.kubewarden.io --context $CONTEXT -o custom-columns='NAME:.metadata.name,POLICY-SERVER:.spec.policyServer,MODULE:.spec.module,MODE:.spec.mode' 2>/dev/null | grep -E "NAME|$NAME" 

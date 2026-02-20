@@ -121,7 +121,7 @@ func (r *RowEvents) reindex() {
 }
 
 func (r *RowEvents) At(i int) (RowEvent, bool) {
-	if i < 0 || i > len(r.events) {
+	if i < 0 || i >= len(r.events) {
 		return RowEvent{}, false
 	}
 
@@ -129,6 +129,9 @@ func (r *RowEvents) At(i int) (RowEvent, bool) {
 }
 
 func (r *RowEvents) Set(i int, re RowEvent) {
+	if i < 0 || i >= len(r.events) {
+		return
+	}
 	r.events[i] = re
 	r.index[re.Row.ID] = i
 }

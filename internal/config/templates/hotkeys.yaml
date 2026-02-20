@@ -1,45 +1,58 @@
 # rk9s hotkeys – interactive views & dashboards
 # Auto-synced by rk9s on startup. Press ? to see all shortcuts.
 #
-# Shift-1..4  Interactive CRD views (Longhorn, Fleet, Rancher, Harvester)
-# Shift-5     Nodes (interactive table)
-# Shift-6     rk9s status overview
-# Shift-7     Contexts view (multi-context selection)
-# Shift-8     etcd dashboard (health, members, db size, alarms)
+# F1       Home dashboard (contexts, CLIs, stats, ecosystem)
+# F2       Rancher Clusters (management.cattle.io/v3)
+# F3       Distro – RKE2/K3s HelmCharts
+# F4       etcd Control Planes (enriched node view: INT-IP, MACHINE, OS-VER, ETCD-MEMBER, LAST-SNAP)
+# F5       Nodes (enriched: INT-IP, MACHINE, OS-VER + tabs: Nodes → NodePools → Machines)
+# F6       Fleet GitRepos
+# F7       Longhorn Volumes
+# F8       KubeVirt / Harvester VMs
+# F9       rk9s status overview
+# F10      Contexts (multi-context selection)
 #
 # Within each view, press Shift-I for an aggregated overview dashboard.
 # Use ? for full plugin shortcuts per view.
 #
 hotKeys:
-  rk9s-longhorn:
-    shortCut: Shift-1
-    description: Longhorn Volumes
-    command: volumes.longhorn.io
-  rk9s-fleet:
-    shortCut: Shift-2
-    description: Fleet GitRepos
-    command: gitrepos.fleet.cattle.io
+  rk9s-home:
+    shortCut: F1
+    description: Home Dashboard
+    command: home
   rk9s-rancher:
-    shortCut: Shift-3
+    shortCut: F2
     description: Rancher Clusters
     command: clusters.management.cattle.io
-  rk9s-harvester:
-    shortCut: Shift-4
-    description: Harvester VMs
-    command: virtualmachines.kubevirt.io
+  rk9s-distro:
+    shortCut: F3
+    description: Distro (RKE2/K3s)
+    command: helmcharts.helm.cattle.io
+  rk9s-etcd:
+    shortCut: F4
+    description: etcd Control Planes
+    command: nodes node-role.kubernetes.io/control-plane=true
   rk9s-nodes:
-    shortCut: Shift-5
+    shortCut: F5
     description: Nodes
     command: nodes
+  rk9s-fleet:
+    shortCut: F6
+    description: Fleet GitRepos
+    command: gitrepos.fleet.cattle.io
+  rk9s-longhorn:
+    shortCut: F7
+    description: Longhorn Volumes
+    command: volumes.longhorn.io
+  rk9s-harvester:
+    shortCut: F8
+    description: KubeVirt VMs
+    command: virtualmachines.kubevirt.io
   rk9s-status:
-    shortCut: Shift-6
+    shortCut: F9
     description: rk9s Status
     command: rk9s
   rk9s-contexts:
-    shortCut: Shift-7
+    shortCut: F10
     description: Contexts
     command: context
-  rk9s-etcd:
-    shortCut: Shift-8
-    description: etcd Dashboard
-    command: etcd

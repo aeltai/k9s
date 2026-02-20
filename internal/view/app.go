@@ -169,6 +169,7 @@ func (a *App) layout(ctx context.Context) {
 	main := tview.NewFlex().SetDirection(tview.FlexRow)
 	main.AddItem(a.statusIndicator(), 1, 1, false)
 	main.AddItem(a.Content, 0, 10, true)
+	main.AddItem(ui.NewFKeyBar(a.Styles), 1, 1, false)
 	if !a.Config.K9s.IsCrumbsless() {
 		main.AddItem(a.Crumbs(), 1, 1, false)
 	}
@@ -807,14 +808,19 @@ echo '  :etcd                             etcd health / members / alarms'
 echo '  Press Shift-I in any view above for aggregated overview'
 echo ''
 echo '=== Navigation Hotkeys ==='
-echo '  Shift-1  Longhorn Volumes      Shift-5  Nodes'
-echo '  Shift-2  Fleet GitRepos        Shift-6  rk9s Status'
-echo '  Shift-3  Rancher Clusters      Shift-7  Contexts (multi-select)'
-echo '  Shift-4  Harvester VMs         Shift-8  etcd Dashboard'
+echo '  F1  Home Dashboard             F6   Nodes'
+echo '  F2  Longhorn Volumes           F7   RKE2/K3s HelmCharts'
+echo '  F3  Fleet GitRepos             F8   etcd Snapshots'
+echo '  F4  Rancher Clusters           F9   rk9s Status'
+echo '  F5  KubeVirt VMs               F10  Contexts (multi-select)'
 echo '  Shift-I  Overview dashboard (in any view above)'
 echo '  ?        Full Help'
 echo ''
-echo '=== Multi-Context (from :contexts view) ==='
+echo '=== Quick Info Dashboards ==='
+echo '  :rke2k3s   RKE2/K3s cluster config overview'
+echo '  :etcd      etcd health, members, fragmentation'
+echo ''
+echo '=== Multi-Context (from :contexts view / F10) ==='
 echo '  Space    Toggle context selection'
 echo '  Ctrl-A   Select all contexts'
 `, pluginDir(config.AppName))
@@ -851,10 +857,261 @@ func mcKubectl(ctxs []string, args string) string {
 	return b.String()
 }
 
-func (a *App) rk9sDashboard(name string) {
+func (a *App) rk9sHomeDashboard() {
 	ctxs, subject := a.dashContexts()
+	script := fmt.Sprintf(`
+echo '╔══════════════════════════════════════════════════════╗'
+echo '║              rk9s Home Dashboard                     ║'
+echo '╚══════════════════════════════════════════════════════╝'
+echo ''
+echo '=== Contexts ==='
+echo '  Active:   %s'
+echo '  Selected: %s'
+echo ''
+echo '=== Cluster Info ==='
+%s
+echo ''
+echo '=== CLI Tools ==='
+for tool in kubectl helm longhornctl virtctl fleet rancher kwctl etcdctl crictl; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    ver=$("$tool" version --short 2>/dev/null || "$tool" --version 2>/dev/null || "$tool" version 2>/dev/null | head -1)
+    printf '  ✓ %%-14s %%s\n' "$tool" "$ver"
+  else
+    printf '  ✗ %%-14s (not installed)\n' "$tool"
+  fi
+done
+echo ''
+echo '=== Distribution ==='
+%s
+echo ''
+echo '=== Cluster Stats ==='
+%s
+echo ''
+echo '=== Ecosystem Components ==='
+%s
+echo ''
+echo '=== Navigation (F-Keys) ==='
+echo '  F1  Home Dashboard             F6   Nodes'
+echo '  F2  Longhorn Volumes           F7   RKE2/K3s HelmCharts'
+echo '  F3  Fleet GitRepos             F8   etcd Snapshots'
+echo '  F4  Rancher Clusters           F9   rk9s Status'
+echo '  F5  KubeVirt VMs               F10  Contexts'
+echo ''
+echo '  Shift-I  Overview dashboard (within any view)'
+echo '  ?        Full help and plugin shortcuts'
+echo ''
+echo '=== Quick Commands ==='
+echo '  :pods                             Pods'
+echo '  :deploy                           Deployments'
+echo '  :svc                              Services'
+echo '  :volumes.longhorn.io              Longhorn Volumes'
+echo '  :gitrepos.fleet.cattle.io         Fleet GitRepos'
+echo '  :clusters.management.cattle.io    Rancher Clusters'
+echo '  :virtualmachines.kubevirt.io      KubeVirt VMs'
+echo '  :helmcharts.helm.cattle.io        RKE2/K3s HelmCharts'
+echo '  :etcdsnapshots.rke.cattle.io      etcd Snapshots'
+echo '  :rke2k3s                          RKE2/K3s Info (dashboard)'
+echo '  :etcd                             etcd Info (dashboard)'
+`,
+		a.Config.K9s.ActiveContextName(),
+		subject,
+		mcKubectl(ctxs, `get nodes -o custom-columns='NAME:.metadata.name,STATUS:.status.conditions[?(@.type=="Ready")].status,ROLES:.metadata.labels.node-role\.kubernetes\.io/control-plane,VERSION:.status.nodeInfo.kubeletVersion,OS:.status.nodeInfo.osImage' 2>/dev/null || echo '  (unavailable)'`),
+		a.distroDetectScript(ctxs),
+		a.clusterStatsScript(ctxs),
+		a.ecosystemDetectScript(ctxs),
+	)
+	a.runDashScript("home", subject, script)
+}
+
+func (a *App) distroDetectScript(ctxs []string) string {
+	var b strings.Builder
+	for _, ctx := range ctxs {
+		b.WriteString(fmt.Sprintf(`
+_ctx="%s"
+echo "  [$_ctx]"
+_ver=$(kubectl --context "$_ctx" get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null)
+case "$_ver" in
+  *rke2*) echo "    Distro: RKE2 ($_ver)" ;;
+  *k3s*)  echo "    Distro: K3s ($_ver)" ;;
+  *)      echo "    Distro: Kubernetes ($_ver)" ;;
+esac
+`, ctx))
+	}
+	return b.String()
+}
+
+func (a *App) clusterStatsScript(ctxs []string) string {
+	var b strings.Builder
+	for _, ctx := range ctxs {
+		b.WriteString(fmt.Sprintf(`
+_ctx="%s"
+echo "  [$_ctx]"
+_nodes=$(kubectl --context "$_ctx" get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')
+_pods=$(kubectl --context "$_ctx" get pods -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+_ns=$(kubectl --context "$_ctx" get ns --no-headers 2>/dev/null | wc -l | tr -d ' ')
+_deploy=$(kubectl --context "$_ctx" get deploy -A --no-headers 2>/dev/null | wc -l | tr -d ' ')
+printf '    Nodes: %%s  Pods: %%s  Namespaces: %%s  Deployments: %%s\n' "$_nodes" "$_pods" "$_ns" "$_deploy"
+kubectl --context "$_ctx" top nodes --no-headers 2>/dev/null | awk '{cpu+=$2; mem+=$4; n++} END {if(n>0) printf "    CPU: %%s  MEM: %%s (%%d nodes)\n", cpu/n"%%", mem/n"%%", n}' || echo '    (metrics unavailable)'
+`, ctx))
+	}
+	return b.String()
+}
+
+func (a *App) ecosystemDetectScript(ctxs []string) string {
+	var b strings.Builder
+	for _, ctx := range ctxs {
+		b.WriteString(fmt.Sprintf(`
+_ctx="%s"
+echo "  [$_ctx]"
+for _comp in "longhorn-system:Longhorn" "cattle-system:Rancher" "cattle-fleet-system:Fleet" "kubevirt:KubeVirt" "harvester-system:Harvester" "kubewarden:Kubewarden" "gpu-operator:GPU Operator" "cattle-monitoring-system:Monitoring"; do
+  _ns="${_comp%%:*}"
+  _name="${_comp#*:}"
+  if kubectl --context "$_ctx" get ns "$_ns" >/dev/null 2>&1; then
+    printf '    ✓ %%s\n' "$_name"
+  else
+    printf '    ✗ %%s\n' "$_name"
+  fi
+done
+`, ctx))
+	}
+	return b.String()
+}
+
+func (a *App) rk9sRke2K3sDashboard() {
+	ctxs, subject := a.dashContexts()
+	ctxList := ctxListArg(ctxs)
+	script := fmt.Sprintf(`
+echo '╔══════════════════════════════════════════════════════╗'
+echo '║           RKE2 / K3s Configuration                   ║'
+echo '╚══════════════════════════════════════════════════════╝'
+echo ''
+echo 'Contexts: %s'
+echo ''
+
+echo '=== Distribution Detection ==='
+for _ctx in %s; do
+  echo "  [$_ctx]"
+  _ver=$(kubectl --context "$_ctx" get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null)
+  case "$_ver" in
+    *rke2*) _distro="RKE2" ;;
+    *k3s*)  _distro="K3s" ;;
+    *)      _distro="Unknown" ;;
+  esac
+  _nodes=$(kubectl --context "$_ctx" get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  _cp=$(kubectl --context "$_ctx" get nodes -l node-role.kubernetes.io/control-plane= --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  _workers=$(kubectl --context "$_ctx" get nodes -l '!node-role.kubernetes.io/control-plane' --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  echo "    Distro: $_distro  Version: $_ver"
+  echo "    Nodes: $_nodes (control-plane: $_cp, workers: $_workers)"
+done
+echo ''
+
+echo '=== Node Configuration (config.yaml from control-plane) ==='
+for _ctx in %s; do
+  echo "  [$_ctx]"
+  _node=$(kubectl --context "$_ctx" get nodes -l node-role.kubernetes.io/control-plane= -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+  if [ -n "$_node" ]; then
+    echo "    node: $_node"
+    kubectl --context "$_ctx" debug "node/$_node" -it --image=alpine:3.18 -- chroot /host sh -c '
+      for cfg in /etc/rancher/rke2/config.yaml /etc/rancher/k3s/config.yaml; do
+        if [ -f "$cfg" ]; then
+          echo "    --- $cfg ---"
+          cat "$cfg" 2>/dev/null | sed "s/^/    /"
+          echo ""
+          break
+        fi
+      done
+      if [ ! -f /etc/rancher/rke2/config.yaml ] && [ ! -f /etc/rancher/k3s/config.yaml ]; then
+        echo "    (no RKE2/K3s config.yaml found)"
+      fi
+    ' 2>/dev/null || echo '    (kubectl debug not available or node not accessible)'
+  else
+    echo "    (no control-plane node found)"
+  fi
+done
+echo ''
+
+echo '=== Installed Components (HelmCharts) ==='
+%s
+echo ''
+
+echo '=== System Pods (kube-system) ==='
+%s
+echo ''
+
+echo '=== config.yaml Reference ==='
+echo '  ┌──────────────────────────────────────────────────┐'
+echo '  │ Cluster Networking & API                          │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ write-kubeconfig-mode  Permissions (def: 0600)   │'
+echo '  │ tls-san                Extra SANs for API cert   │'
+echo '  │ bind-address           Server bind IP (0.0.0.0)  │'
+echo '  │ https-listen-port      API port (def: 6443)      │'
+echo '  │ cluster-cidr           Pod CIDR (10.42.0.0/16)   │'
+echo '  │ service-cidr           Svc CIDR (10.43.0.0/16)   │'
+echo '  │ cluster-dns            DNS IP (10.43.0.10)       │'
+echo '  │ cluster-domain         Domain (cluster.local)    │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ Authentication & HA                               │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ token                  Shared join secret         │'
+echo '  │ cluster-init           Init embedded etcd (bool)  │'
+echo '  │ datastore-endpoint     External DB URL            │'
+echo '  │ server                 Join URL (agents/2nd srv)  │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ Component Args (pass-through lists)               │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ kube-apiserver-arg     API server args            │'
+echo '  │ kube-scheduler-arg     Scheduler args             │'
+echo '  │ kube-controller-manager-arg  Controller mgr args  │'
+echo '  │ kubelet-arg            Kubelet args               │'
+echo '  │ kube-proxy-arg         Kube-proxy args            │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ Bundled Components                                │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ disable                List to not deploy:        │'
+echo '  │   K3s:  traefik servicelb coredns local-storage   │'
+echo '  │         metrics-server                            │'
+echo '  │   RKE2: rke2-canal rke2-coredns                  │'
+echo '  │         rke2-ingress-nginx rke2-metrics-server    │'
+echo '  │ cni                    CNI (canal/calico/cilium)  │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ Node Configuration                                │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ node-name              Override hostname           │'
+echo '  │ node-label             Labels (tier=frontend)     │'
+echo '  │ node-taint             Taints (key=val:NoSched)   │'
+echo '  │ selinux                SELinux support (bool)     │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ Storage & Etcd Backup                             │'
+echo '  ├──────────────────────────────────────────────────┤'
+echo '  │ etcd-snapshot-schedule-cron  Backup cron          │'
+echo '  │ etcd-snapshot-retention      Keep N snaps (5)     │'
+echo '  │ etcd-s3                      S3 backup (bool)     │'
+echo '  └──────────────────────────────────────────────────┘'
+echo ''
+echo '  To view full options: rke2 server --help / k3s server --help'
+echo '  To edit: kubectl debug node/<name> -it --image=alpine:3.18'
+echo '           then: vi /host/etc/rancher/rke2/config.yaml'
+`,
+		subject,
+		ctxList,
+		ctxList,
+		mcKubectl(ctxs, "get helmcharts.helm.cattle.io -n kube-system -o custom-columns='NAME:.metadata.name,CHART:.spec.chart,VERSION:.spec.version,NS:.spec.targetNamespace' 2>/dev/null || echo '  (no HelmChart CRDs)'"),
+		mcKubectl(ctxs, "-n kube-system get pods -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,NODE:.spec.nodeName,RESTARTS:.status.containerStatuses[0].restartCount' 2>/dev/null | head -25"),
+	)
+	a.runDashScript("RKE2/K3s", subject, script)
+}
+
+func (a *App) rk9sDashboard(name string) {
 	switch name {
+	case "home":
+		a.rk9sHomeDashboard()
+		return
+	case "rke2k3s":
+		a.rk9sRke2K3sDashboard()
+		return
 	case "etcd":
+		ctxs, subject := a.dashContexts()
 		a.runDashScript("etcd", subject, fmt.Sprintf(`
 echo '=== etcd Dashboard ==='
 echo 'Contexts: %s'

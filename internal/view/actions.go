@@ -4,6 +4,7 @@
 package view
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -92,13 +93,14 @@ func hotKeyActions(r Runner, aa *ui.KeyActions) error {
 			continue
 		}
 
+		visible := !strings.HasPrefix(hk.ShortCut, "F")
 		aa.Add(key, ui.NewKeyActionWithOpts(
 			hk.Description,
 			gotoCmd(r, command, "", !hk.KeepHistory),
 			ui.ActionOpts{
 				Shared:  true,
 				HotKey:  true,
-				Visible: true,
+				Visible: visible,
 			},
 		))
 	}
@@ -130,12 +132,10 @@ func pluginActions(r Runner, aa *ui.KeyActions) error {
 		return err
 	}
 	pp := config.NewPlugins()
-	if err := pp.Load(path, true); err != nil {
-		return err
-	}
+	loadErr := pp.Load(path, true)
 
 	var (
-		errs    error
+		errs    = loadErr
 		aliases = r.Aliases()
 		ro      = r.App().Config.IsReadOnly()
 	)
@@ -176,6 +176,11 @@ func pluginActions(r Runner, aa *ui.KeyActions) error {
 
 func pluginAction(r Runner, p *config.Plugin) ui.ActionHandler {
 	return func(evt *tcell.EventKey) *tcell.EventKey {
+		if len(p.Args) == 0 && len(p.Pipes) == 0 {
+			r.App().gotoResource(p.Command, "", true, true)
+			return nil
+		}
+
 		path := r.GetSelectedItem()
 		if path == "" {
 			return evt
@@ -192,6 +197,11 @@ func pluginAction(r Runner, p *config.Plugin) ui.ActionHandler {
 				return nil
 			}
 			args[i] = arg
+		}
+
+		if p.InView {
+			pluginInView(r, p, args)
+			return nil
 		}
 
 		cb := func() {
@@ -239,4 +249,32 @@ func pluginAction(r Runner, p *config.Plugin) ui.ActionHandler {
 
 		return nil
 	}
+}
+
+func pluginInView(r Runner, p *config.Plugin, args []string) {
+	cb := func() {
+		r.App().Flash().Infof("Running %s...", p.Description)
+		go func() {
+			out, err := oneShoot(context.Background(), &shellOpts{
+				binary: p.Command,
+				args:   args,
+			})
+			if err != nil {
+				out = fmt.Sprintf("Error: %s\n\n%s", err, out)
+			}
+			r.App().QueueUpdateDraw(func() {
+				details := NewDetails(r.App(), p.Description, "plugin", contentTXT, true).Update(out)
+				if e := r.App().inject(details, false); e != nil {
+					r.App().Flash().Err(e)
+				}
+			})
+		}()
+	}
+	if p.Confirm {
+		msg := fmt.Sprintf("Run?\n%s %s", p.Command, strings.Join(args, " "))
+		d := r.App().Styles.Dialog()
+		dialog.ShowConfirm(&d, r.App().Content.Pages, "Confirm "+p.Description, msg, cb, func() {})
+		return
+	}
+	cb()
 }

@@ -43,9 +43,14 @@ var defaultNOHeader = model1.Header{
 	model1.HeaderColumn{Name: "ARCH", Attrs: model1.Attrs{Wide: true}},
 	model1.HeaderColumn{Name: "TAINTS"},
 	model1.HeaderColumn{Name: "VERSION"},
+	// Rancher/RKE2-enriched columns — visible by default, blank for non-RKE2 nodes.
+	model1.HeaderColumn{Name: "INT-IP"},
+	model1.HeaderColumn{Name: "RC-CLUSTER"},
+	model1.HeaderColumn{Name: "MACHINE"},
+	model1.HeaderColumn{Name: "OS-VER"},
+	// Wide columns (shown with -w flag)
 	model1.HeaderColumn{Name: "OS-IMAGE", Attrs: model1.Attrs{Wide: true}},
 	model1.HeaderColumn{Name: "KERNEL", Attrs: model1.Attrs{Wide: true}},
-	model1.HeaderColumn{Name: "INTERNAL-IP", Attrs: model1.Attrs{Wide: true}},
 	model1.HeaderColumn{Name: "EXTERNAL-IP", Attrs: model1.Attrs{Wide: true}},
 	model1.HeaderColumn{Name: "PODS", Attrs: model1.Attrs{Align: tview.AlignRight}},
 	model1.HeaderColumn{Name: "CPU", Attrs: model1.Attrs{Align: tview.AlignRight, MX: true}},
@@ -58,6 +63,9 @@ var defaultNOHeader = model1.Header{
 	model1.HeaderColumn{Name: "GPU/C", Attrs: model1.Attrs{Align: tview.AlignRight, MX: true}},
 	model1.HeaderColumn{Name: "SH-GPU/A", Attrs: model1.Attrs{Align: tview.AlignRight, MX: true}},
 	model1.HeaderColumn{Name: "SH-GPU/C", Attrs: model1.Attrs{Align: tview.AlignRight, MX: true}},
+	// etcd-specific — wide, populated only on RKE2 control-plane/etcd nodes.
+	model1.HeaderColumn{Name: "ETCD-MEMBER", Attrs: model1.Attrs{Wide: true}},
+	model1.HeaderColumn{Name: "LAST-SNAP", Attrs: model1.Attrs{Wide: true, Time: true}},
 	model1.HeaderColumn{Name: "LABELS", Attrs: model1.Attrs{Wide: true}},
 	model1.HeaderColumn{Name: "VALID", Attrs: model1.Attrs{Wide: true}},
 	model1.HeaderColumn{Name: "AGE", Attrs: model1.Attrs{Time: true}},
@@ -136,6 +144,14 @@ func (n Node) defaultRow(nwm *NodeWithMetrics, r *model1.Row) error {
 	if pc := nwm.PodCount; pc == -1 {
 		podCount = NAValue
 	}
+
+	// Rancher/RKE2 enrichment from labels and annotations.
+	machineID := missing(rke2Machine(&no))
+	osVer := missing(rke2OSVer(&no))
+	rcCluster := missing(rke2ClusterName(&no))
+	etcdMember := missing(no.Annotations["etcd.rke2.cattle.io/node-name"])
+	lastSnap := missing(no.Annotations["etcd.rke2.cattle.io/local-snapshots-timestamp"])
+
 	r.ID = client.FQN("", no.Name)
 	r.Fields = model1.Fields{
 		no.Name,
@@ -144,9 +160,14 @@ func (n Node) defaultRow(nwm *NodeWithMetrics, r *model1.Row) error {
 		no.Status.NodeInfo.Architecture,
 		strconv.Itoa(len(no.Spec.Taints)),
 		no.Status.NodeInfo.KubeletVersion,
+		// Rancher-enriched columns (visible by default)
+		iIP,
+		rcCluster,
+		machineID,
+		osVer,
+		// Wide columns
 		no.Status.NodeInfo.OSImage,
 		no.Status.NodeInfo.KernelVersion,
-		iIP,
 		eIP,
 		podCount,
 		toMc(c.cpu),
@@ -159,12 +180,59 @@ func (n Node) defaultRow(nwm *NodeWithMetrics, r *model1.Row) error {
 		toMu(c.gpu),
 		toMu(a.gpuShared),
 		toMu(c.gpuShared),
+		// etcd-specific wide columns
+		etcdMember,
+		lastSnap,
 		mapToStr(no.Labels),
 		AsStatus(n.diagnose(statuses)),
 		ToAge(no.GetCreationTimestamp()),
 	}
 
 	return nil
+}
+
+// rke2ClusterName returns the Rancher cluster this node is part of.
+// Reads cluster.x-k8s.io/cluster-name annotation (set by Rancher/CAPI on managed nodes).
+// Empty on self-managed local nodes (the Rancher server itself).
+func rke2ClusterName(no *v1.Node) string {
+	return no.Annotations["cluster.x-k8s.io/cluster-name"]
+}
+
+// rke2Machine returns the CAPI/RKE2 machine name for display.
+// Prefers cluster.x-k8s.io/machine annotation, falls back to rke.cattle.io/machine label.
+func rke2Machine(no *v1.Node) string {
+	if m := no.Annotations["cluster.x-k8s.io/machine"]; m != "" {
+		return m
+	}
+	if m := no.Labels["rke.cattle.io/machine"]; m != "" {
+		// Shorten UUID-style IDs: only first 8 chars
+		if len(m) > 8 {
+			return m[:8]
+		}
+		return m
+	}
+	return ""
+}
+
+// rke2OSVer returns a short OS identifier from NFD labels, e.g. "sles-15.3".
+func rke2OSVer(no *v1.Node) string {
+	id := no.Labels["feature.node.kubernetes.io/system-os_release.ID"]
+	ver := no.Labels["feature.node.kubernetes.io/system-os_release.VERSION_ID"]
+	switch {
+	case id != "" && ver != "":
+		return id + "-" + ver
+	case id != "":
+		return id
+	case ver != "":
+		return ver
+	default:
+		// Fall back to short OS image string (first word)
+		img := no.Status.NodeInfo.OSImage
+		if idx := strings.Index(img, " "); idx > 0 {
+			return img[:idx]
+		}
+		return img
+	}
 }
 
 // Healthy checks component health.

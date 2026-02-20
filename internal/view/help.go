@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/config"
@@ -151,53 +152,38 @@ func (h *Help) build() {
 }
 
 // showRk9s returns rk9s plugin shortcuts for the Help legend.
-// Each entry notes the view where the shortcut is active.
+// F-keys are shown in the dedicated bottom bar, not here.
 func (h *Help) showRk9s() model.MenuHints {
 	return model.MenuHints{
-		// -- Navigation (global, works from any view) --
-		{Mnemonic: "Shift-1", Description: "Longhorn Volumes"},
-		{Mnemonic: "Shift-2", Description: "Fleet GitRepos"},
-		{Mnemonic: "Shift-3", Description: "Rancher Clusters"},
-		{Mnemonic: "Shift-4", Description: "Harvester VMs"},
-		{Mnemonic: "Shift-5", Description: "Nodes"},
-		{Mnemonic: "Shift-6", Description: "rk9s Status"},
-		{Mnemonic: "Shift-7", Description: "Contexts (multi-select)"},
-		{Mnemonic: "Shift-8", Description: "etcd Dashboard"},
+		// -- Global --
 		{Mnemonic: "Shift-I", Description: "Overview dashboard [per view]"},
+		{Mnemonic: "←/→", Description: "Cycle CRDs [per view]"},
 		{Mnemonic: ":rk9s", Description: "Status & CLI check"},
-		// -- Multi-context [contexts view] --
-		{Mnemonic: "Space", Description: "Toggle select [contexts]"},
-		{Mnemonic: "Ctrl-A", Description: "Select all [contexts]"},
+		{Mnemonic: ":home", Description: "Home dashboard"},
+		{Mnemonic: ":rke2k3s", Description: "RKE2/K3s config info"},
+		{Mnemonic: ":etcd", Description: "etcd health info"},
 		// -- Rancher [clusters.mgmt.cattle.io] --
 		{Mnemonic: "Shift-O", Description: "Cluster overview [rancher]"},
-		{Mnemonic: "Shift-U", Description: "All clusters [rancher/ctx]"},
-		{Mnemonic: "Shift-J", Description: "Projects [rancher]"},
-		{Mnemonic: "Shift-K", Description: "Gen kubeconfig [rancher/ctx]"},
-		{Mnemonic: "Shift-F", Description: "Fleet status [fleet CRDs]"},
+		{Mnemonic: "Shift-R", Description: "RBAC [rancher]"},
+		{Mnemonic: "Shift-K", Description: "Gen kubeconfig [rancher]"},
+		{Mnemonic: "Shift-S", Description: "SSH node [rancher/nodes]"},
 		// -- Fleet [gitrepos/bundles] --
 		{Mnemonic: "Shift-G", Description: "GitRepo status [gitrepos]"},
-		{Mnemonic: "Shift-R", Description: "Reconcile [gitrepos/volumes]"},
-		{Mnemonic: "Shift-T", Description: "Targets/Trim [bundles/volumes]"},
+		{Mnemonic: "Shift-S", Description: "Suspend [gitrepos]"},
+		{Mnemonic: "Shift-U", Description: "Resume [gitrepos]"},
 		// -- Longhorn [volumes.longhorn.io] --
-		{Mnemonic: "Shift-L", Description: "Preflight [volumes.longhorn]"},
-		{Mnemonic: "Shift-B", Description: "Snapshots [volumes.longhorn]"},
+		{Mnemonic: "Shift-C", Description: "Create snapshot [volumes]"},
+		{Mnemonic: "Shift-B", Description: "List snapshots [volumes]"},
+		{Mnemonic: "Shift-K", Description: "Create backup [volumes]"},
 		// -- KubeVirt [vm/vmi] --
-		{Mnemonic: "Shift-H", Description: "VM overview [vm]"},
 		{Mnemonic: "Shift-S", Description: "Console [vm/vmi]"},
 		{Mnemonic: "Shift-W", Description: "Start VM [vm]"},
 		{Mnemonic: "Shift-X", Description: "Stop VM [vm/vmi]"},
-		{Mnemonic: "Shift-Z", Description: "Restart [vm/vmi]"},
-		{Mnemonic: "Shift-Y", Description: "SSH [vm/vmi]"},
-		{Mnemonic: "m", Description: "Live migrate [vm/vmi]"},
-		// -- Nodes [nodes] --
+		// -- Nodes --
+		{Mnemonic: "Shift-O", Description: "Node overview [nodes]"},
 		{Mnemonic: "Shift-C", Description: "RKE2/K3s config [nodes]"},
-		{Mnemonic: "Shift-D", Description: "Services [nodes]"},
 		{Mnemonic: "Shift-E", Description: "etcdctl health [nodes]"},
-		{Mnemonic: "Shift-P", Description: "crictl ps [nodes]"},
-		{Mnemonic: "Shift-G", Description: "Longhorn node info [nodes]"},
-		{Mnemonic: "Shift-N", Description: "etcd snapshot [nodes]"},
-		{Mnemonic: "Shift-F", Description: "etcd defrag [nodes]"},
-		{Mnemonic: "Shift-A", Description: "etcd alarm disarm [nodes]"},
+		{Mnemonic: "Shift-W", Description: "Drain node [nodes]"},
 	}
 }
 
@@ -276,8 +262,12 @@ func (h *Help) showHotKeys() (model.MenuHints, error) {
 	kk.Sort()
 	mm := make(model.MenuHints, 0, len(hh.HotKey))
 	for _, k := range kk {
+		sc := hh.HotKey[k].ShortCut
+		if strings.HasPrefix(sc, "F") && len(sc) <= 3 {
+			continue
+		}
 		mm = append(mm, model.MenuHint{
-			Mnemonic:    hh.HotKey[k].ShortCut,
+			Mnemonic:    sc,
 			Description: hh.HotKey[k].Description,
 		})
 	}

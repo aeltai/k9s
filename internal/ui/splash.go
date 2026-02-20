@@ -11,24 +11,24 @@ import (
 	"github.com/derailed/tview"
 )
 
-// LogoSmall rk9s small logo.
+// LogoSmall rk9s small logo — shown in the top-left header while running.
 var LogoSmall = []string{
-	` ____  _ __  __ ________     `,
-	`| _ \| |\ \/ /   __   \______`,
-	`|   /| | \  /\____    /  ___/`,
-	`|_|_\|_|  \  \  /    /\___  \`,
-	`       |_|  /_/____//____  /`,
-	`            \/           \/  `,
+	`rK9s`,
+	`────────────────────`,
+	`SUSE Rancher · K8s  `,
+	`Opinionated TUI     `,
+	``,
+	``,
 }
 
 // LogoBig rk9s big logo for splash page.
 var LogoBig = []string{
-	` ____  _ __  __ ________        _______  ____     ___ `,
-	`| _ \| |\ \/ /   __   \______/   ___ \|    |   |   |`,
-	`|   /| | \  /\____    /  ___/    \  \/|    |   |   |`,
-	`|_|_\|_|  \  \  /    /\___  \     \___|    |___|   |`,
-	`       |_|  /_/____//____  /\______  /_______ \___|`,
-	`            \/           \/        \/        \/    `,
+	``,
+	`  rK9s`,
+	`  ─────────────────────────────`,
+	`  SUSE Rancher · Kubernetes TUI`,
+	`  Opinionated multi-cluster ops`,
+	``,
 }
 
 // Splash represents a splash screen.
@@ -59,12 +59,12 @@ func NewSplash(styles *config.Styles, version string) *Splash {
 }
 
 func (*Splash) layoutLogo(t *tview.TextView, styles *config.Styles) {
-	const rWidth = 5
 	c := styles.Body().LogoColor
 	_, _ = fmt.Fprintf(t, "%s", strings.Repeat("\n", 2))
 	for i, line := range LogoBig {
-		if i < 4 && len(line) > rWidth {
-			_, _ = fmt.Fprintf(t, "[green::b]%s[%s::b]%s", line[:rWidth], c, line[rWidth:])
+		if i == 1 && len(line) > 3 {
+			// "  rK9s" — color 'r' green, 'K9s' in logo color
+			_, _ = fmt.Fprintf(t, "[%s::b]%s[green::b]r[%s::b]%s", c, line[:2], c, line[3:])
 		} else {
 			_, _ = fmt.Fprintf(t, "[%s::b]%s", c, line)
 		}

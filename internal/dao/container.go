@@ -10,6 +10,7 @@ import (
 
 	"github.com/derailed/k9s/internal"
 	"github.com/derailed/k9s/internal/client"
+	"github.com/derailed/k9s/internal/model1"
 	"github.com/derailed/k9s/internal/render"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -39,6 +40,9 @@ func (c *Container) List(ctx context.Context, _ string) ([]runtime.Object, error
 	fqn, ok := ctx.Value(internal.KeyPath).(string)
 	if !ok {
 		return nil, fmt.Errorf("no context path for %q", c.gvr)
+	}
+	if ctxName, realPath := model1.SplitMultiContextID(fqn); ctxName != "" {
+		fqn = realPath
 	}
 
 	var (
@@ -133,6 +137,9 @@ func getContainerStatus(kind, name string, status *v1.PodStatus) *v1.ContainerSt
 }
 
 func (c *Container) fetchPod(fqn string) (*v1.Pod, error) {
+	if ctxName, realPath := model1.SplitMultiContextID(fqn); ctxName != "" {
+		fqn = realPath
+	}
 	o, err := c.getFactory().Get(client.PodGVR, fqn, true, labels.Everything())
 	if err != nil {
 		return nil, fmt.Errorf("failed to locate pod %q: %w", fqn, err)

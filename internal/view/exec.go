@@ -242,6 +242,47 @@ func execute(opts *shellOpts, statusChan chan<- string) error {
 	return nil
 }
 
+func runKInView(a *App, title string, opts *shellOpts) {
+	bin, err := exec.LookPath("kubectl")
+	if err != nil {
+		a.Flash().Errf("kubectl not in path: %s", err)
+		return
+	}
+	args := []string{opts.args[0]}
+	if u, err := a.Conn().Config().ImpersonateUser(); err == nil {
+		args = append(args, "--as", u)
+	}
+	if g, err := a.Conn().Config().ImpersonateGroups(); err == nil {
+		args = append(args, "--as-group", g)
+	}
+	if isInsecure := a.Conn().Config().Flags().Insecure; isInsecure != nil && *isInsecure {
+		args = append(args, "--insecure-skip-tls-verify")
+	}
+	ctxName := a.Config.K9s.ActiveContextName()
+	if opts.overrideContext != "" {
+		ctxName = opts.overrideContext
+	}
+	args = append(args, "--context", ctxName)
+	if cfg := a.Conn().Config().Flags().KubeConfig; cfg != nil && *cfg != "" {
+		args = append(args, "--kubeconfig", *cfg)
+	}
+	args = append(args, opts.args[1:]...)
+
+	a.Flash().Infof("Running kubectl %s...", opts.args[0])
+	go func() {
+		out, err := oneShoot(context.Background(), &shellOpts{binary: bin, args: args})
+		if err != nil {
+			out = fmt.Sprintf("Error: %s\n\n%s", err, out)
+		}
+		a.QueueUpdateDraw(func() {
+			details := NewDetails(a, title, "kubectl", contentTXT, true).Update(out)
+			if e := a.inject(details, false); e != nil {
+				a.Flash().Err(e)
+			}
+		})
+	}()
+}
+
 func runKu(ctx context.Context, a *App, opts *shellOpts) (string, error) {
 	bin, err := exec.LookPath("kubectl")
 	if errors.Is(err, exec.ErrDot) {

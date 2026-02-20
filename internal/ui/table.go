@@ -57,6 +57,7 @@ type Table struct {
 	readOnly       bool
 	noIcon         bool
 	fullGVR        bool
+	TabHint        string
 }
 
 // NewTable returns a new table view.
@@ -715,10 +716,17 @@ func (t *Table) styleTitle() string {
 		buff = render.Truncate(buff, maxTruncate)
 	}
 	if buff == "" {
+		if t.TabHint != "" {
+			return title + t.TabHint
+		}
 		return title
 	}
 
-	return title + SkinTitle(fmt.Sprintf(SearchFmt, buff), &styles)
+	result := title + SkinTitle(fmt.Sprintf(SearchFmt, buff), &styles)
+	if t.TabHint != "" {
+		result += t.TabHint
+	}
+	return result
 }
 
 // ROIndicator returns an icon showing whether the session is in readonly mode or not.

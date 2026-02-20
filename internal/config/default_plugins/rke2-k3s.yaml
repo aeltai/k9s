@@ -1,16 +1,203 @@
-# RKE2 / K3s node plugins for rk9s
-# Node scope: $NAME is the node name
-# These plugins use kubectl debug for node access
-# Navigation: Use Shift-5 for Nodes dashboard
+# RKE2 / K3s plugins for rk9s
+# F3: Distro view — HelmCharts → HelmChartConfigs → UpgradePlans → Addons
+# Nodes (F5): Shift-J journalctl, Shift-I node overview, Shift-C config, Shift-V vi edit
 plugins:
-  rke2-k3s-config:
+  # ─── Shift-I: Full Distro + Rancher KDM overview ─────────────────
+  helmchart-overview:
+    shortCut: Shift-I
+    override: true
+    description: Distro overview (Rancher KDM, versions, MachineConfigs, HelmCharts)
+    scopes:
+      - helmcharts.helm.cattle.io
+      - helmchartconfigs.helm.cattle.io
+      - plans.upgrade.cattle.io
+      - addons.k3s.cattle.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        CTX="--context ${CONTEXT}"
+        echo '╔══════════════════════════════════════════════════════════╗'
+        echo '║         RKE2 / K3s — Distro & Release Overview           ║'
+        echo '╚══════════════════════════════════════════════════════════╝'
+        echo ''
+
+        echo '── Cluster Distribution ─────────────────────────────────────'
+        VER=$(kubectl $CTX get nodes -o jsonpath='{.items[0].status.nodeInfo.kubeletVersion}' 2>/dev/null)
+        case "$VER" in *rke2*) D="RKE2";; *k3s*) D="K3s";; *) D="Unknown";; esac
+        NODES=$(kubectl $CTX get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')
+        CP=$(kubectl $CTX get nodes -l node-role.kubernetes.io/control-plane= --no-headers 2>/dev/null | wc -l | tr -d ' ')
+        echo "  Distro:   $D   Running: $VER"
+        echo "  Nodes:    $NODES total   Control-planes: $CP"
+        echo ''
+
+        echo '── Rancher Server & KDM Release Info ────────────────────────'
+        R_VER=$(kubectl $CTX get settings.management.cattle.io server-version -o jsonpath='{.value}' 2>/dev/null)
+        KDM_BRANCH=$(kubectl $CTX get settings.management.cattle.io kdm-branch -o jsonpath='{.value}' 2>/dev/null)
+        RKE2_DEF=$(kubectl $CTX get settings.management.cattle.io rke2-default-version -o jsonpath='{.value}' 2>/dev/null)
+        K3S_DEF=$(kubectl $CTX get settings.management.cattle.io k3s-default-version -o jsonpath='{.value}' 2>/dev/null)
+        HELM_VER=$(kubectl $CTX get settings.management.cattle.io helm-version -o jsonpath='{.value}' 2>/dev/null)
+        K8S_RANGE=$(kubectl $CTX get settings.management.cattle.io ui-k8s-supported-versions-range -o jsonpath='{.value}' 2>/dev/null)
+        FLEET_VER=$(kubectl $CTX get settings.management.cattle.io fleet-version -o jsonpath='{.value}' 2>/dev/null)
+        echo "  Rancher:           ${R_VER:-n/a}"
+        echo "  KDM Branch:        ${KDM_BRANCH:-n/a}"
+        echo "  RKE2 Default:      ${RKE2_DEF:-n/a}"
+        echo "  K3s Default:       ${K3S_DEF:-n/a}"
+        echo "  Helm:              ${HELM_VER:-n/a}"
+        echo "  Supported k8s:     ${K8S_RANGE:-n/a}"
+        echo "  Fleet:             ${FLEET_VER:-n/a}"
+        echo ''
+
+        echo '── Upgrade Plans (plans.upgrade.cattle.io) ──────────────────'
+        kubectl $CTX get plans.upgrade.cattle.io -A \
+          -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,TARGET-VERSION:.spec.version,SELECTOR:.spec.nodeSelector.matchExpressions[0].key' \
+          2>/dev/null || echo '  (no upgrade plans)'
+        echo ''
+
+        echo '── Provisioning Clusters (MachineConfigs) ───────────────────'
+        kubectl $CTX get clusters.provisioning.cattle.io -A \
+          -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,K8S:.spec.kubernetesVersion,READY:.status.ready' \
+          2>/dev/null || echo '  (no provisioning.cattle.io clusters)'
+        echo ''
+        echo '  Machine pools & refs:'
+        kubectl $CTX get clusters.provisioning.cattle.io -A \
+          -o jsonpath='{range .items[*]}{.metadata.name}{" pools: "}{range .spec.rkeConfig.machinePools[*]}{.name}{"(qty="}{.quantity}{")"}{" "}{end}{"\n"}{end}' \
+          2>/dev/null | grep -v "^$" || echo '  (no machine pools defined)'
+        echo ''
+
+        echo '── AWS MachineConfigs (amazonec2configs) ────────────────────'
+        kubectl $CTX get amazonec2configs -A \
+          -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,INSTANCE:.spec.instanceType,REGION:.spec.region,AMI:.spec.ami' \
+          2>/dev/null || echo '  (no amazonec2configs)'
+        echo ''
+
+        echo '── HelmChart Addons ──────────────────────────────────────────'
+        kubectl $CTX get helmcharts.helm.cattle.io -A \
+          -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,CHART:.spec.chart,VERSION:.spec.version,TARGET-NS:.spec.targetNamespace' \
+          2>/dev/null | head -25 || echo '  (none)'
+        echo ''
+
+        echo '── HelmChartConfig Overrides ────────────────────────────────'
+        kubectl $CTX get helmchartconfigs.helm.cattle.io -A \
+          -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,FAILURE-POLICY:.spec.failurePolicy' \
+          2>/dev/null || echo '  (none)'
+        echo ''
+
+        echo '── K3s/RKE2 Addons ──────────────────────────────────────────'
+        kubectl $CTX get addons.k3s.cattle.io -A \
+          -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,AGE:.metadata.creationTimestamp' \
+          2>/dev/null || echo '  (no addons.k3s.cattle.io)'
+        echo ''
+
+        echo '── Disabled Components (from config.yaml) ───────────────────'
+        NODE=$(kubectl $CTX get nodes -l node-role.kubernetes.io/control-plane= -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+        if [ -n "$NODE" ]; then
+          kubectl $CTX debug "node/$NODE" -it --image=alpine:3.18 -- chroot /host sh -c '
+            for cfg in /etc/rancher/rke2/config.yaml /etc/rancher/k3s/config.yaml; do
+              [ -f "$cfg" ] || continue
+              echo "  From: $cfg"
+              echo "  CNI:      $(grep "^cni:" "$cfg" 2>/dev/null | head -1 || echo "(default)")"
+              echo "  Disabled: $(grep -A5 "^disable:" "$cfg" 2>/dev/null | grep "^\s*-" | tr -d " -" | tr "\n" " " || echo "(none)")"
+              echo "  TLS SANs: $(grep "tls-san" "$cfg" 2>/dev/null | wc -l) entry/entries"
+              break
+            done
+          ' 2>/dev/null || echo '  (debug not available)'
+        fi
+        echo ''
+
+        echo '── Actions ──────────────────────────────────────────────────'
+        echo '  ← / →     Cycle: HelmCharts · HelmChartConfigs · UpgradePlans · Addons'
+        echo '  Shift-J   Journal logs (from Nodes view)'
+        echo '  Shift-C   Full config.yaml'
+        echo '  Shift-V   Edit config.yaml (vi)'
+        echo ''   # ─── HelmChart detail ───────────────────────────────────
+  helmchart-detail:
+    shortCut: Shift-Y
+    override: true
+    description: HelmChart full YAML
+    scopes:
+      - helmcharts.helm.cattle.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        kubectl --context $CONTEXT get helmcharts.helm.cattle.io $NAME -n $NAMESPACE -o yaml 2>/dev/null   # ─── Jump to HelmChartConfig ────────────────────────────
+  helmchart-to-config:
     shortCut: Shift-C
-    description: RKE2/K3s config + args + TLS-SAN + CNI
+    description: Jump to HelmChartConfigs
+    scopes:
+      - helmcharts.helm.cattle.io
+    command: helmchartconfigs.helm.cattle.io
+  # ─── Jump to Nodes ──────────────────────────────────────
+  helmchart-to-nodes:
+    shortCut: Shift-N
+    description: Jump to Nodes
+    scopes:
+      - helmcharts.helm.cattle.io
+    command: nodes
+  # ─── Jump to kube-system pods ───────────────────────────
+  helmchart-to-pods:
+    shortCut: Shift-P
+    description: Jump to kube-system pods
+    scopes:
+      - helmcharts.helm.cattle.io
+    command: pods
+  # ─── Node overview ───────────────────────────────────────
+  node-overview:
+    shortCut: Shift-O
+    override: true
+    description: Node overview (OS, kernel, labels, taints)
     scopes:
       - node
       - nodes
     command: bash
     background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== Node: $NAME ==="
+        echo ""
+        kubectl get node $NAME --context $CONTEXT -o jsonpath='{
+          "OS:            "}{.status.nodeInfo.osImage}{"\n"}{
+          "Kernel:        "}{.status.nodeInfo.kernelVersion}{"\n"}{
+          "Kubelet:       "}{.status.nodeInfo.kubeletVersion}{"\n"}{
+          "Container RT:  "}{.status.nodeInfo.containerRuntimeVersion}{"\n"}{
+          "Architecture:  "}{.status.nodeInfo.architecture}{"\n"}{
+          "Internal IP:   "}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{
+          "External IP:   "}{.status.addresses[?(@.type=="ExternalIP")].address}{"\n"}{
+          "Hostname:      "}{.status.addresses[?(@.type=="Hostname")].address}{"\n"}{
+          }' 2>/dev/null
+        echo ""
+        echo "--- Allocatable ---"
+        kubectl get node $NAME --context $CONTEXT -o jsonpath='{
+          "CPU:     "}{.status.allocatable.cpu}{"\n"}{
+          "Memory:  "}{.status.allocatable.memory}{"\n"}{
+          "Pods:    "}{.status.allocatable.pods}{"\n"}{
+          "Storage: "}{.status.allocatable.ephemeral-storage}{"\n"}{
+          }' 2>/dev/null
+        echo ""
+        echo "--- Labels ---"
+        kubectl get node $NAME --context $CONTEXT -o jsonpath='{range .metadata.labels}{@}{"\n"}{end}' 2>/dev/null | sort | head -30
+        echo ""
+        echo "--- Taints ---"
+        kubectl get node $NAME --context $CONTEXT -o jsonpath='{range .spec.taints[*]}  {.key}={.value}:{.effect}{"\n"}{end}' 2>/dev/null || echo "  (no taints)"
+        echo ""
+        echo "--- Conditions ---"
+        kubectl get node $NAME --context $CONTEXT -o jsonpath='{range .status.conditions[*]}  {.type}: {.status} ({.reason}){"\n"}{end}' 2>/dev/null   # ─── RKE2/K3s config.yaml ───────────────────────────────
+  rke2-k3s-config:
+    shortCut: Shift-C
+    description: RKE2/K3s config.yaml (full)
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
     args:
       - -c
       - |
@@ -27,7 +214,7 @@ plugins:
             echo "--- RKE2 Version ---"
             rke2 --version 2>/dev/null || echo "(cannot detect version)"
             echo ""
-            echo "--- Server/Agent Args ---"
+            echo "--- Server/Agent Env ---"
             cat /etc/rancher/rke2/rke2-server.env 2>/dev/null || echo "(no server env)"
             cat /etc/rancher/rke2/rke2-agent.env 2>/dev/null || echo "(no agent env)"
             echo ""
@@ -48,7 +235,7 @@ plugins:
             echo "--- K3s Version ---"
             k3s --version 2>/dev/null || echo "(cannot detect version)"
             echo ""
-            echo "--- Server/Agent Args ---"
+            echo "--- Server/Agent Env ---"
             cat /etc/systemd/system/k3s.service.env 2>/dev/null || echo "(no service env)"
             echo ""
             echo "--- TLS SAN ---"
@@ -62,7 +249,80 @@ plugins:
             echo "Checking kubelet args..."
             cat /var/lib/kubelet/kubeadm-flags.env 2>/dev/null || echo "(not a kubeadm node either)"
           fi
-        ' 2>/dev/null | less -K
+        ' 2>/dev/null   # ─── RKE2/K3s edit config ───────────────────────────────
+  rke2-k3s-edit-config:
+    shortCut: Shift-V
+    override: true
+    description: Edit RKE2/K3s config.yaml (vi)
+    confirm: true
+    dangerous: true
+    scopes:
+      - node
+      - nodes
+    command: kubectl
+    background: false
+    args:
+      - debug
+      - node/$NAME
+      - --context=$CONTEXT
+      - -it
+      - --image=alpine:3.18
+      - --
+      - chroot
+      - /host
+      - sh
+      - -c
+      - |
+        CFG=""
+        [ -f /etc/rancher/rke2/config.yaml ] && CFG=/etc/rancher/rke2/config.yaml
+        [ -f /etc/rancher/k3s/config.yaml ]  && CFG=/etc/rancher/k3s/config.yaml
+        if [ -z "$CFG" ]; then
+          echo "No RKE2/K3s config.yaml found."
+          echo "Expected: /etc/rancher/rke2/config.yaml or /etc/rancher/k3s/config.yaml"
+          exit 1
+        fi
+        vi "$CFG"
+        echo ""
+        echo "Done. Restart with: systemctl restart rke2-server (or rke2-agent / k3s)"
+  # ─── Shift-J: journalctl live log for rke2/k3s service ──────────
+  node-journal:
+    shortCut: Shift-J
+    override: true
+    description: journalctl rke2/k3s service (last 100 lines)
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== Journal: $NAME ==="
+        echo ""
+        kubectl debug node/"$NAME" --context "$CONTEXT" -it --image=alpine:3.18 -- \
+          chroot /host sh -c '
+            # Detect which service is running
+            SVC=""
+            for s in rke2-server rke2-agent k3s k3s-agent; do
+              systemctl is-active "$s" >/dev/null 2>&1 && SVC="$s" && break
+            done
+            if [ -z "$SVC" ]; then
+              echo "No rke2-server / rke2-agent / k3s service found active on this node."
+              echo "Trying to show any recent rke2/k3s journal entries..."
+              journalctl -u "rke2*" -u "k3s*" --no-pager -n 60 2>/dev/null || echo "(journalctl unavailable)"
+              exit 0
+            fi
+            echo "Active service: $SVC"
+            echo ""
+            echo "─── Last 100 lines ──────────────────────────────────"
+            journalctl -u "$SVC" --no-pager -n 100 2>/dev/null
+            echo ""
+            echo "─── Errors / Warnings (last 6h) ─────────────────────"
+            journalctl -u "$SVC" --no-pager -p warning --since "6 hours ago" 2>/dev/null | tail -30
+          ' 2>/dev/null
+
+  # ─── Node services ─────────────────────────────────────
   node-distro-services:
     shortCut: Shift-D
     description: Node services + journal errors + containerd
@@ -71,6 +331,7 @@ plugins:
       - nodes
     command: bash
     background: false
+    inView: true
     args:
       - -c
       - |
@@ -102,7 +363,119 @@ plugins:
           echo ""
           echo "--- Uptime ---"
           uptime 2>/dev/null
-        ' 2>/dev/null | less -K
+        ' 2>/dev/null   # ─── Restart RKE2/K3s service ───────────────────────────
+  rke2-k3s-restart:
+    shortCut: Shift-R
+    override: true
+    description: Restart RKE2/K3s service on node
+    confirm: true
+    dangerous: true
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== Restart RKE2/K3s Service: $NAME ==="
+        echo ""
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          for svc in rke2-server rke2-agent k3s; do
+            if systemctl is-active $svc >/dev/null 2>&1; then
+              echo "Restarting $svc ..."
+              systemctl restart $svc 2>&1
+              echo ""
+              echo "--- Status After Restart ---"
+              systemctl status $svc --no-pager 2>&1 | head -15
+              exit 0
+            fi
+          done
+          echo "No RKE2/K3s service found running on this node."
+        ' 2>/dev/null   # ─── Show RKE2/K3s component disable list ───────────────
+  rke2-k3s-components:
+    shortCut: Shift-M
+    override: true
+    description: HelmChart addons and disabled components
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== RKE2/K3s Components ==="
+        echo ""
+        echo "--- HelmChart Addons (kube-system) ---"
+        kubectl get helmcharts.helm.cattle.io -n kube-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,CHART:.spec.chart,VERSION:.spec.version,NS:.spec.targetNamespace' 2>/dev/null || echo "  (no HelmChart CRDs)"
+        echo ""
+        echo "--- HelmChartConfig (overrides) ---"
+        kubectl get helmchartconfigs.helm.cattle.io -n kube-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,NS:.spec.targetNamespace' 2>/dev/null || echo "  (no HelmChartConfig CRDs)"
+        echo ""
+        echo "--- Addons Manifests Dir (from node) ---"
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          for d in /var/lib/rancher/rke2/server/manifests /var/lib/rancher/k3s/server/manifests; do
+            if [ -d "$d" ]; then
+              echo "  $d:"
+              ls -la "$d" 2>/dev/null
+              break
+            fi
+          done
+        ' 2>/dev/null
+        echo ""
+        echo "--- Disabled Components (from config.yaml) ---"
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          for cfg in /etc/rancher/rke2/config.yaml /etc/rancher/k3s/config.yaml; do
+            if [ -f "$cfg" ]; then
+              grep -A20 "^disable:" "$cfg" 2>/dev/null || echo "  (none disabled)"
+              break
+            fi
+          done
+        ' 2>/dev/null   # ─── Show cluster-cidr, service-cidr, dns ───────────────
+  rke2-k3s-networking:
+    shortCut: Shift-K
+    override: true
+    description: Cluster networking (CIDR, DNS, CNI)
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== Cluster Networking ==="
+        echo ""
+        echo "--- From config.yaml on node: $NAME ---"
+        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
+          for cfg in /etc/rancher/rke2/config.yaml /etc/rancher/k3s/config.yaml; do
+            if [ -f "$cfg" ]; then
+              echo "Config: $cfg"
+              echo ""
+              for key in cluster-cidr service-cidr cluster-dns cluster-domain cni bind-address https-listen-port tls-san write-kubeconfig-mode; do
+                val=$(grep "^${key}:" "$cfg" 2>/dev/null)
+                if [ -n "$val" ]; then
+                  echo "  $val"
+                fi
+              done
+              # Also check multi-line tls-san
+              grep -A10 "^tls-san:" "$cfg" 2>/dev/null | head -12
+              break
+            fi
+          done
+        ' 2>/dev/null
+        echo ""
+        echo "--- From API ---"
+        echo "  Pod CIDR:     $(kubectl cluster-info dump --context $CONTEXT 2>/dev/null | grep -m1 cluster-cidr | head -1 || echo 'n/a')"
+        echo "  Service CIDR: $(kubectl cluster-info dump --context $CONTEXT 2>/dev/null | grep -m1 service-cluster-ip-range | head -1 || echo 'n/a')"
+        echo "  Cluster DNS:  $(kubectl get svc -n kube-system --context $CONTEXT 2>/dev/null | grep dns)"
+        echo ""
+        echo "--- CNI Pods ---"
+        kubectl get pods -n kube-system --context $CONTEXT -l 'k8s-app in (canal,calico-node,cilium,flannel,kube-proxy)' -o wide 2>/dev/null || echo "  (no CNI pods detected)"   # ─── crictl ─────────────────────────────────────────────
   crictl-ps:
     shortCut: Shift-P
     description: crictl ps – containers sorted by memory
@@ -111,6 +484,7 @@ plugins:
       - nodes
     command: bash
     background: false
+    inView: true
     args:
       - -c
       - |
@@ -127,10 +501,87 @@ plugins:
           echo "--- Images (top 20 by size) ---"
           crictl images --output table 2>/dev/null | head -1
           crictl images --output table 2>/dev/null | tail -n +2 | sort -k4 -h -r | head -20
-        ' 2>/dev/null | less -K
-  etcdctl-health:
-    shortCut: Shift-E
-    description: etcdctl health + db size + alarms
+        ' 2>/dev/null   # ─── Node drain/uncordon ────────────────────────────────
+  node-drain:
+    shortCut: Shift-W
+    override: true
+    description: Drain node (evict pods)
+    confirm: true
+    dangerous: true
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== Draining Node: $NAME ==="
+        echo ""
+        kubectl drain $NAME --context $CONTEXT --ignore-daemonsets --delete-emptydir-data 2>&1
+        echo ""
+        echo "Node status:"
+        kubectl get node $NAME --context $CONTEXT -o wide 2>/dev/null
+  node-uncordon:
+    shortCut: Shift-U
+    override: true
+    description: Uncordon node
+    confirm: true
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== Uncordoning Node: $NAME ==="
+        kubectl uncordon $NAME --context $CONTEXT 2>&1
+        echo ""
+        kubectl get node $NAME --context $CONTEXT -o wide 2>/dev/null
+  # ─── Node taints/labels ─────────────────────────────────
+  node-taints:
+    shortCut: Shift-T
+    description: Node taints
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== Taints on Node: $NAME ==="
+        echo ""
+        kubectl get node $NAME --context $CONTEXT -o jsonpath='{range .spec.taints[*]}  {.key}={.value}:{.effect}{"\n"}{end}' 2>/dev/null || echo "  (no taints)"
+  node-labels:
+    shortCut: Shift-L
+    override: true
+    description: Node labels
+    scopes:
+      - node
+      - nodes
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== Labels on Node: $NAME ==="
+        echo ""
+        kubectl get node $NAME --context $CONTEXT -o json 2>/dev/null | python3 -c "
+        import sys, json
+        d = json.load(sys.stdin)
+        for k, v in sorted(d.get('metadata',{}).get('labels',{}).items()):
+          print(f'  {k}={v}')
+        " 2>/dev/null || kubectl get node $NAME --context $CONTEXT -o jsonpath='{.metadata.labels}'   # ─── Rancher SSH from node view ─────────────────────────
+  rancher-ssh-node:
+    shortCut: Shift-S
+    override: true
+    description: Rancher SSH into node
     scopes:
       - node
       - nodes
@@ -139,48 +590,13 @@ plugins:
     args:
       - -c
       - |
-        echo "=== etcd Health: $NAME ==="
-        echo ""
-        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
-          export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
-          export ETCDCTL_CACERT=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
-          export ETCDCTL_CERT=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt
-          export ETCDCTL_KEY=/var/lib/rancher/rke2/server/tls/etcd/server-client.key
-          if [ ! -f "$ETCDCTL_CACERT" ]; then
-            export ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt
-            export ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt
-            export ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key
-          fi
-          echo "--- Endpoint Health ---"
-          etcdctl endpoint health 2>/dev/null || echo "etcdctl not found or certs not available (this may not be a control-plane node)"
-          echo ""
-          echo "--- Endpoint Status (incl. DB size) ---"
-          etcdctl endpoint status --write-out=table 2>/dev/null
-          echo ""
-          echo "--- Member List ---"
-          etcdctl member list --write-out=table 2>/dev/null
-          echo ""
-          echo "--- Alarms ---"
-          ALARMS=$(etcdctl alarm list 2>/dev/null)
-          if [ -z "$ALARMS" ]; then
-            echo "  No alarms active"
-          else
-            echo "$ALARMS"
-          fi
-          echo ""
-          echo "--- Defrag Status ---"
-          etcdctl endpoint status --write-out=json 2>/dev/null | python3 -c "
-          import sys, json
-          try:
-            data = json.load(sys.stdin)
-            for ep in data:
-              db = ep.get(\"Status\",{}).get(\"dbSize\",0)
-              inuse = ep.get(\"Status\",{}).get(\"dbSizeInUse\",0)
-              frag = ((db - inuse) / db * 100) if db > 0 else 0
-              print(f\"  DB: {db/1024/1024:.1f}MB  InUse: {inuse/1024/1024:.1f}MB  Fragmentation: {frag:.1f}%\")
-          except: print(\"  (unable to parse status)\")
-          " 2>/dev/null || echo "  (defrag check unavailable)"
-        ' 2>/dev/null | less -K
+        if command -v rancher >/dev/null 2>&1; then
+          echo "Connecting via rancher SSH to $NAME..."
+          rancher ssh $NAME 2>/dev/null || echo "SSH not available for this node (custom nodes not supported by rancher ssh)"
+        else
+          echo "rancher CLI not found. Use: kubectl debug node/$NAME -it --image=alpine:3.18 -- sh"
+        fi
+  # ─── Longhorn node storage ─────────────────────────────
   longhorn-node-storage:
     shortCut: Shift-G
     override: true
@@ -190,6 +606,7 @@ plugins:
       - nodes
     command: bash
     background: false
+    inView: true
     args:
       - -c
       - |
@@ -206,115 +623,8 @@ plugins:
         echo "--- Disk Status ---"
         kubectl get nodes.longhorn.io -n longhorn-system $NAME --context $CONTEXT -o jsonpath='{range .status.diskStatus.*}  Disk: {.diskUUID}  Schedulable: {.conditions.Schedulable.status}  Storage: {.storageAvailable}/{.storageMaximum}{"\n"}{end}' 2>/dev/null
         echo ""
-        echo "--- Scheduled Volumes on This Node ---"
+        echo "--- Volumes on This Node ---"
         kubectl get volumes.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,STATE:.status.state,NODE:.status.currentNodeID,SIZE:.spec.size' 2>/dev/null | grep -E "NAME|$NAME" || echo "  (no volumes on this node)"
         echo ""
         echo "--- Replicas on This Node ---"
-        kubectl get replicas.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,STATE:.status.currentState' 2>/dev/null | grep -E "NAME|$NAME" | head -20 || echo "  (no replicas)" | less -K
-  etcd-snapshot:
-    shortCut: Shift-N
-    description: etcd snapshot save
-    scopes:
-      - node
-      - nodes
-    command: bash
-    background: false
-    args:
-      - -c
-      - |
-        echo "=== etcd Snapshot: $NAME ==="
-        echo ""
-        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
-          export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
-          for d in /var/lib/rancher/rke2/server/tls/etcd /var/lib/rancher/k3s/server/tls/etcd /etc/kubernetes/pki/etcd; do
-            if [ -f "$d/server-ca.crt" ] || [ -f "$d/ca.crt" ]; then
-              export ETCDCTL_CACERT=$(ls "$d"/server-ca.crt "$d"/ca.crt 2>/dev/null | head -1)
-              export ETCDCTL_CERT=$(ls "$d"/server-client.crt "$d"/server.crt 2>/dev/null | head -1)
-              export ETCDCTL_KEY=$(ls "$d"/server-client.key "$d"/server.key 2>/dev/null | head -1)
-              break
-            fi
-          done
-          TS=$(date +%Y%m%d-%H%M%S)
-          SNAP="/tmp/etcd-snapshot-${TS}.db"
-          echo "Saving snapshot to $SNAP ..."
-          etcdctl snapshot save "$SNAP" 2>&1
-          echo ""
-          echo "--- Snapshot Status ---"
-          etcdctl snapshot status "$SNAP" --write-out=table 2>&1
-          echo ""
-          echo "Snapshot saved at: $SNAP (inside debug container)"
-          echo "To copy out, use: kubectl cp ..."
-        ' 2>/dev/null | less -K
-  etcd-defrag:
-    shortCut: Shift-F
-    override: true
-    description: etcd defragment
-    scopes:
-      - node
-      - nodes
-    command: bash
-    background: false
-    args:
-      - -c
-      - |
-        echo "=== etcd Defrag: $NAME ==="
-        echo ""
-        echo "WARNING: Defragmentation causes a brief pause in etcd."
-        echo ""
-        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
-          export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
-          for d in /var/lib/rancher/rke2/server/tls/etcd /var/lib/rancher/k3s/server/tls/etcd /etc/kubernetes/pki/etcd; do
-            if [ -f "$d/server-ca.crt" ] || [ -f "$d/ca.crt" ]; then
-              export ETCDCTL_CACERT=$(ls "$d"/server-ca.crt "$d"/ca.crt 2>/dev/null | head -1)
-              export ETCDCTL_CERT=$(ls "$d"/server-client.crt "$d"/server.crt 2>/dev/null | head -1)
-              export ETCDCTL_KEY=$(ls "$d"/server-client.key "$d"/server.key 2>/dev/null | head -1)
-              break
-            fi
-          done
-          echo "--- Before Defrag ---"
-          etcdctl endpoint status --write-out=table 2>&1
-          echo ""
-          echo "Running defrag..."
-          etcdctl defrag 2>&1
-          echo ""
-          echo "--- After Defrag ---"
-          etcdctl endpoint status --write-out=table 2>&1
-        ' 2>/dev/null | less -K
-  etcd-alarm-disarm:
-    shortCut: Shift-A
-    override: true
-    description: etcd alarm disarm
-    scopes:
-      - node
-      - nodes
-    command: bash
-    background: false
-    args:
-      - -c
-      - |
-        echo "=== etcd Alarm Disarm: $NAME ==="
-        echo ""
-        kubectl debug node/$NAME --context $CONTEXT -it --image=alpine:3.18 -- chroot /host sh -c '
-          export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
-          for d in /var/lib/rancher/rke2/server/tls/etcd /var/lib/rancher/k3s/server/tls/etcd /etc/kubernetes/pki/etcd; do
-            if [ -f "$d/server-ca.crt" ] || [ -f "$d/ca.crt" ]; then
-              export ETCDCTL_CACERT=$(ls "$d"/server-ca.crt "$d"/ca.crt 2>/dev/null | head -1)
-              export ETCDCTL_CERT=$(ls "$d"/server-client.crt "$d"/server.crt 2>/dev/null | head -1)
-              export ETCDCTL_KEY=$(ls "$d"/server-client.key "$d"/server.key 2>/dev/null | head -1)
-              break
-            fi
-          done
-          echo "--- Current Alarms ---"
-          ALARMS=$(etcdctl alarm list 2>&1)
-          if [ -z "$ALARMS" ]; then
-            echo "  No alarms active. Nothing to disarm."
-          else
-            echo "$ALARMS"
-            echo ""
-            echo "Disarming all alarms..."
-            etcdctl alarm disarm 2>&1
-            echo ""
-            echo "--- Alarms After Disarm ---"
-            etcdctl alarm list 2>&1 || echo "  No alarms"
-          fi
-        ' 2>/dev/null | less -K
+        kubectl get replicas.longhorn.io -n longhorn-system --context $CONTEXT -o custom-columns='NAME:.metadata.name,VOLUME:.spec.volumeName,STATE:.status.currentState' 2>/dev/null | grep -E "NAME|$NAME" | head -20 || echo "  (no replicas)" 

@@ -26,7 +26,9 @@ func TestNodeRender(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "minikube", r.ID)
-	e := model1.Fields{"minikube", "Ready", "master", "amd64", "0", "v1.15.2", "Buildroot 2018.05.3", "4.15.0", "192.168.64.107", "<none>", "0", "10", "4000", "0", "20", "7874", "0", "n/a", "n/a"}
+	// New field order: NAME, STATUS, ROLE, ARCH, TAINTS, VERSION, INT-IP, RC-CLUSTER, MACHINE, OS-VER,
+	//                  OS-IMAGE, KERNEL, EXTERNAL-IP, PODS, CPU, CPU/A, %CPU, MEM, MEM/A, %MEM
+	e := model1.Fields{"minikube", "Ready", "master", "amd64", "0", "v1.15.2", "192.168.64.107", "<none>", "<none>", "Buildroot", "Buildroot 2018.05.3", "4.15.0", "<none>", "0", "10", "4000", "0", "20", "7874"}
 	assert.Equal(t, e, r.Fields[:19])
 }
 

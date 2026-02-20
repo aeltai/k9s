@@ -1,6 +1,6 @@
-# Harvester / KubeVirt VM management plugins for rk9s
-# Navigation: Use Shift-3 to jump to VM view
+# Harvester / KubeVirt VM overview plugins for rk9s
 # VM lifecycle commands (console, vnc, start, stop, etc.) are in virtctl.yaml
+# Navigation: F5 for KubeVirt VMs view
 plugins:
   harvester-vm-overview:
     shortCut: Shift-H
@@ -9,6 +9,7 @@ plugins:
       - virtualmachines.kubevirt.io
     command: bash
     background: false
+    inView: true
     args:
       - -c
       - |
@@ -26,7 +27,7 @@ plugins:
         echo "--- Network Interfaces ---"
         kubectl get vmi $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{range .status.interfaces[*]}Name: {.name}  IP: {.ipAddress}  MAC: {.mac}{"\n"}{end}' 2>/dev/null
         echo ""
-        echo "Press q to return" | less -K
+        echo "Press q to return"
   harvester-vm-events:
     shortCut: Shift-E
     override: true
@@ -36,6 +37,7 @@ plugins:
       - virtualmachineinstances.kubevirt.io
     command: bash
     background: false
+    inView: true
     args:
       - -c
       - |
@@ -43,20 +45,21 @@ plugins:
         kubectl get events -n $NAMESPACE --context $CONTEXT --field-selector involvedObject.name=$NAME --sort-by='.lastTimestamp' 2>/dev/null
         echo ""
         echo "=== Conditions ==="
-        kubectl get vm $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{range .status.conditions[*]}Type: {.type}  Status: {.status}  Reason: {.reason}  Message: {.message}{"\n"}{end}' 2>/dev/null | less -K
+        kubectl get vm $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{range .status.conditions[*]}Type: {.type}  Status: {.status}  Reason: {.reason}  Message: {.message}{"\n"}{end}' 2>/dev/null
   harvester-overview:
-    shortCut: Shift-I
+    shortCut: Shift-O
     override: true
-    description: Harvester VM overview dashboard
+    description: Harvester / KubeVirt overview
     scopes:
       - virtualmachines.kubevirt.io
       - virtualmachineinstances.kubevirt.io
     command: bash
     background: false
+    inView: true
     args:
       - -c
       - |
-        echo "=== Harvester / KubeVirt VM Overview ==="
+        echo "=== Harvester / KubeVirt Overview ==="
         echo ""
         echo "--- Virtual Machines ---"
         kubectl get vm -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,RUNNING:.spec.running,AGE:.metadata.creationTimestamp' 2>/dev/null || echo "  (no VMs found)"
@@ -67,5 +70,44 @@ plugins:
         echo "--- DataVolumes ---"
         kubectl get dv -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase,PROGRESS:.status.progress' 2>/dev/null || echo "  (no data volumes)"
         echo ""
+        echo "--- VM Migrations ---"
+        kubectl get vmim -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase' 2>/dev/null || echo "  (no migrations)"
+        echo ""
         echo "--- VM Networks ---"
-        kubectl get net-attach-def -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' 2>/dev/null || echo "  (no network attachments)" | less -K
+        kubectl get net-attach-def -A --context $CONTEXT -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name' 2>/dev/null || echo "  (no network attachments)"   # ─── VMI scope ───────────────────────────────────────────
+  vmi-detail:
+    shortCut: Shift-O
+    override: true
+    description: VMI detail (node, IP, phase)
+    scopes:
+      - virtualmachineinstances.kubevirt.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== VMI: $NAME ==="
+        kubectl get vmi $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{
+          "Phase: "}{.status.phase}{"\n"}{
+          "Node:  "}{.status.nodeName}{"\n"}{
+          "IPs:   "}{range .status.interfaces[*]}{.ipAddress}{" "}{end}{"\n"}{
+          }' 2>/dev/null   # ─── DataVolume scope ────────────────────────────────────
+  dv-detail:
+    shortCut: Shift-O
+    override: true
+    description: DataVolume detail
+    scopes:
+      - datavolumes.cdi.kubevirt.io
+    command: bash
+    background: false
+    inView: true
+    args:
+      - -c
+      - |
+        echo "=== DataVolume: $NAME ==="
+        kubectl get dv $NAME -n $NAMESPACE --context $CONTEXT -o jsonpath='{
+          "Phase:    "}{.status.phase}{"\n"}{
+          "Progress: "}{.status.progress}{"\n"}{
+          "Source:   "}{.spec.source}{"\n"}{
+          }' 2>/dev/null 
