@@ -148,21 +148,19 @@ func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
 func mcParallelScript(contexts []string, kubectlArgs []string) string {
 	args := strings.Join(kubectlArgs, " ")
 	var b strings.Builder
-	b.WriteString(`_tmpdir=$(mktemp -d) && trap 'rm -rf "$_tmpdir"' EXIT && `)
-	b.WriteString(fmt.Sprintf("echo '=== rk9s multi-context (%d contexts, parallel) ===' && echo '' && ", len(contexts)))
+	b.WriteString("_tmpdir=$(mktemp -d)\n")
+	b.WriteString("trap 'rm -rf \"$_tmpdir\"' EXIT\n")
+	b.WriteString(fmt.Sprintf("echo '=== rk9s multi-context (%d contexts, parallel) ==='\necho ''\n", len(contexts)))
 	for _, ctx := range contexts {
 		b.WriteString(fmt.Sprintf(
-			`(kubectl %s --context %s 2>&1 > "$_tmpdir/%s" || echo "(unreachable)" > "$_tmpdir/%s") & `,
+			"(kubectl %s --context %s 2>&1 > \"$_tmpdir/%s\" || echo '(unreachable)' > \"$_tmpdir/%s\") &\n",
 			args, ctx, ctx, ctx,
 		))
 	}
-	b.WriteString("wait && ")
-	for i, ctx := range contexts {
-		if i > 0 {
-			b.WriteString(" && ")
-		}
+	b.WriteString("wait\n")
+	for _, ctx := range contexts {
 		b.WriteString(fmt.Sprintf(
-			`printf '\n%s\n%s\n' && cat "$_tmpdir/%s"`,
+			"printf '\\n%s\\n%s\\n'\ncat \"$_tmpdir/%s\"\n",
 			ctx, strings.Repeat("-", len(ctx)), ctx,
 		))
 	}

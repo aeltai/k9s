@@ -11,12 +11,14 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/adrg/xdg"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/derailed/k9s/internal"
 	"github.com/derailed/k9s/internal/client"
@@ -717,6 +719,14 @@ func (a *App) cowCmd(msg string) {
 	dialog.ShowError(&d, a.Content.Pages, msg)
 }
 
+func pluginDir(appName string) string {
+	dir, err := xdg.DataFile(filepath.Join(appName, "plugins"))
+	if err != nil {
+		return filepath.Join(os.Getenv("HOME"), ".local", "share", appName, "plugins")
+	}
+	return dir
+}
+
 func (a *App) rk9sCmd() {
 	sel, _ := config.LoadSelectedContexts()
 	var nodeBlock string
@@ -759,7 +769,7 @@ done
 %s
 echo ''
 echo '=== Plugin Directory ==='
-pdir="${XDG_DATA_HOME:-$HOME/.local/share}/rk9s/plugins"
+pdir="%s"
 if [ -d "$pdir" ]; then
   printf '  %%s\n' "$pdir"
   ls -1 "$pdir"/*.yaml 2>/dev/null | while read f; do printf '    %%s\n' "$(basename "$f")"; done
@@ -767,7 +777,7 @@ else
   echo '  (not found)'
 fi
 echo ''
-echo 'Press Escape to return. Type :vm or :vmi for VM views with virtctl shortcuts.'`, nodeBlock)
+echo 'Press Escape to return. Type :vm or :vmi for VM views with virtctl shortcuts.'`, nodeBlock, pluginDir(config.AppName))
 
 	opts := shellOpts{
 		binary:     "bash",

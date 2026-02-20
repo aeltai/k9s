@@ -356,7 +356,7 @@ func EnsureDefaultPlugins() error {
 	if len(entries) == 0 {
 		return nil
 	}
-	if err := data.EnsureDirPath(dir, data.DefaultDirMod); err != nil {
+	if err := data.EnsureFullPath(dir, data.DefaultDirMod); err != nil {
 		return nil
 	}
 	for _, e := range entries {
