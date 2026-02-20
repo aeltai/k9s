@@ -141,6 +141,36 @@ func (h *Help) build() {
 	if hh, err := h.showHotKeys(); err == nil {
 		h.computeMaxes(hh)
 		h.addSection(col, "HOTKEYS", hh)
+		col += 2
+	}
+	// rk9s: always show our plugin shortcuts so users discover them
+	if rk9sHints := h.showRk9s(); len(rk9sHints) > 0 {
+		h.computeMaxes(rk9sHints)
+		h.addSection(col, "RK9S", rk9sHints)
+	}
+}
+
+// showRk9s returns rk9s plugin shortcuts for the Help legend.
+func (h *Help) showRk9s() model.MenuHints {
+	return model.MenuHints{
+		{Mnemonic: "Shift-O", Description: "Rancher UI"},
+		{Mnemonic: "Shift-F", Description: "Fleet UI"},
+		{Mnemonic: "Shift-J", Description: "Rancher projects"},
+		{Mnemonic: "Shift-U", Description: "Rancher clusters"},
+		{Mnemonic: "Shift-L", Description: "Longhorn UI"},
+		{Mnemonic: "Shift-H", Description: "Harvester UI"},
+		{Mnemonic: "Shift-C", Description: "RKE2/K3s config (nodes)"},
+		{Mnemonic: "Shift-D", Description: "Node services (nodes)"},
+		{Mnemonic: "Shift-P", Description: "crictl (nodes)"},
+		{Mnemonic: "Shift-E", Description: "etcdctl (nodes)"},
+		{Mnemonic: "Shift-G", Description: "GitRepo status (fleet)"},
+		{Mnemonic: "Shift-R", Description: "Reconcile/volume (fleet/longhorn)"},
+		{Mnemonic: "Shift-T", Description: "Bundle/trim (fleet/longhorn)"},
+		{Mnemonic: "Shift-B", Description: "Snapshots (longhorn)"},
+		{Mnemonic: "Shift-N", Description: "Longhorn node (nodes)"},
+		{Mnemonic: "Shift-M", Description: "Multi-context (contexts)"},
+		{Mnemonic: "Space", Description: "Toggle context (contexts)"},
+		{Mnemonic: "Ctrl-A", Description: "Select all contexts"},
 	}
 }
 
