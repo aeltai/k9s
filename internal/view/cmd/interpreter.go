@@ -205,6 +205,11 @@ func (c *Interpreter) IsDirCmd() bool {
 	return dirCmd.Has(c.cmd)
 }
 
+// IsRk9sCmd returns true if rk9s/status cmd is detected.
+func (c *Interpreter) IsRk9sCmd() bool {
+	return rk9sCmd.Has(c.cmd)
+}
+
 // IsRBACCmd returns true if rbac cmd is detected.
 func (c *Interpreter) IsRBACCmd() bool {
 	return c.cmd == canCmd

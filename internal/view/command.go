@@ -305,6 +305,8 @@ func (c *Command) specialCmd(p *cmd.Interpreter, pushCmd bool) bool {
 		} else if err := c.app.dirCmd(a, pushCmd); err != nil {
 			c.app.Flash().Err(err)
 		}
+	case p.IsRk9sCmd():
+		c.app.rk9sCmd()
 	default:
 		return false
 	}

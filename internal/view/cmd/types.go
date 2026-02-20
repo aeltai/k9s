@@ -74,4 +74,8 @@ var (
 		"xr",
 		"xray",
 	)
+	rk9sCmd = sets.New(
+		"rk9s",
+		"status",
+	)
 )

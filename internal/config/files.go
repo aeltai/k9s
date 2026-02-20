@@ -345,12 +345,12 @@ func SaveSelectedContexts(ctxs []string) error {
 	return os.WriteFile(path, []byte(strings.Join(ctxs, "\n")), 0600)
 }
 
-// EnsureDefaultPlugins copies embedded rk9s plugins to the user's plugins dir
-// if it exists and is empty. Allows plugins to work without running install script.
+// EnsureDefaultPlugins syncs embedded rk9s plugins to the user's plugins dir.
+// Always writes new or updated plugins so upgrades deploy automatically.
 func EnsureDefaultPlugins() error {
 	dir, err := xdg.DataFile(filepath.Join(AppName, "plugins"))
 	if err != nil {
-		return nil // non-fatal
+		return nil
 	}
 	entries, _ := fs.ReadDir(defaultPluginsFS, "default_plugins")
 	if len(entries) == 0 {
@@ -359,23 +359,24 @@ func EnsureDefaultPlugins() error {
 	if err := data.EnsureDirPath(dir, data.DefaultDirMod); err != nil {
 		return nil
 	}
-	// Only copy if dir is empty (first run)
-	existing, _ := os.ReadDir(dir)
-	if len(existing) > 0 {
-		return nil
-	}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		content, err := fs.ReadFile(defaultPluginsFS, filepath.Join("default_plugins", e.Name()))
+		embedded, err := fs.ReadFile(defaultPluginsFS, filepath.Join("default_plugins", e.Name()))
 		if err != nil {
 			slog.Warn("Could not read embedded plugin", slogs.Path, e.Name(), slogs.Error, err)
 			continue
 		}
 		dst := filepath.Join(dir, e.Name())
-		if err := os.WriteFile(dst, content, 0644); err != nil {
+		existing, readErr := os.ReadFile(dst)
+		if readErr == nil && string(existing) == string(embedded) {
+			continue
+		}
+		if err := os.WriteFile(dst, embedded, 0644); err != nil {
 			slog.Warn("Could not write default plugin", slogs.Path, dst, slogs.Error, err)
+		} else {
+			slog.Info("Synced rk9s plugin", slogs.Path, e.Name())
 		}
 	}
 	return nil

@@ -82,6 +82,10 @@ export PATH="$HOME/.local/bin:$PATH"
 rk9s
 ```
 
+On startup, rk9s displays a flash banner showing which CLIs are detected (rancher, virtctl, longhornctl, kwctl, fleet) and how many contexts are selected.
+
+Type `:rk9s` or `:status` to see a full status page: CLI versions, selected contexts, nodes across those contexts, and installed plugins.
+
 ---
 
 ## Legend – rk9s operations
@@ -90,12 +94,14 @@ Press **?** in rk9s to see the Help view. The **RK9S** section lists our shortcu
 
 ### Multi-context selection (contexts view)
 
+The context list shows a **SELECTED** column with `+` for each selected context.
+
 | Shortcut | Action |
 |----------|--------|
 | **Space** | Toggle current context selection |
 | **Ctrl-A** | Select all contexts |
 | **Ctrl-Space** | Clear selection |
-| **Shift-M** | Run across selected contexts (nodes) |
+| **Shift-M** | Show nodes from all selected contexts |
 
 Select one or more contexts; `$CONTEXTS` is then available to plugins (comma-separated) for multi-cluster operations.
 
@@ -178,8 +184,12 @@ Alias: `:vm` for VirtualMachine, `:vmi` for VirtualMachineInstance.
 ### How to: Run commands across multiple clusters
 
 1. `:contexts` to open the context list.
-2. **Space** to select contexts, **Ctrl-A** to select all.
-3. **Shift-M** runs `kubectl get nodes` on each selected context.
+2. The **SELECTED** column shows `+` for selected contexts.
+3. **Space** to select contexts, **Ctrl-A** to select all.
+4. **Shift-M** runs `kubectl get nodes` across all selected contexts and shows combined output.
+5. Type `:rk9s` for a full status page with CLI versions, selected contexts, and nodes.
+
+Plugins on other views also receive `$CONTEXTS` (comma-separated) for multi-cluster operations.
 
 ### How to: Trim a Longhorn volume
 

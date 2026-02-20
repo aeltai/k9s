@@ -16,7 +16,7 @@ import (
 func TestContextHeader(t *testing.T) {
 	var c render.Context
 
-	assert.Len(t, c.Header(""), 4)
+	assert.Len(t, c.Header(""), 5)
 }
 
 func TestContextRender(t *testing.T) {
@@ -37,7 +37,7 @@ func TestContextRender(t *testing.T) {
 			},
 			e: model1.Row{
 				ID:     "c1",
-				Fields: model1.Fields{"c1", "c1", "u1", "ns1"},
+				Fields: model1.Fields{"c1", "", "c1", "u1", "ns1"},
 			},
 		},
 	}
@@ -46,7 +46,7 @@ func TestContextRender(t *testing.T) {
 	for k := range uu {
 		uc := uu[k]
 		t.Run(k, func(t *testing.T) {
-			row := model1.NewRow(4)
+			row := model1.NewRow(5)
 			err := r.Render(uc.ctx, "", &row)
 
 			require.NoError(t, err)

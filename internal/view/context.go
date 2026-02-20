@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 
 	"github.com/derailed/k9s/internal/client"
 	"github.com/derailed/k9s/internal/config"
@@ -46,10 +47,10 @@ func (c *Context) bindKeys(aa *ui.KeyActions) {
 	if !c.App().Config.IsReadOnly() {
 		c.bindDangerousKeys(aa)
 	}
-	// rk9s: multi-context selection (Space=toggle, Ctrl-A=select all)
 	aa.Add(ui.KeySpace, ui.NewKeyAction("ToggleSelect", c.toggleSelectCtx, true))
 	aa.Add(tcell.KeyCtrlA, ui.NewKeyAction("SelectAll", c.selectAllCtx, true))
 	aa.Add(tcell.KeyCtrlSpace, ui.NewKeyAction("SelectNone", c.selectNoneCtx, true))
+	aa.Add(ui.KeyShiftM, ui.NewKeyAction("ShowSelected", c.showSelectedCtx, true))
 }
 
 func (c *Context) bindDangerousKeys(aa *ui.KeyActions) {
@@ -109,6 +110,46 @@ func (c *Context) selectNoneCtx(evt *tcell.EventKey) *tcell.EventKey {
 	}
 	c.App().Flash().Info("Cleared context selection")
 	c.Refresh()
+	return nil
+}
+
+func (c *Context) showSelectedCtx(evt *tcell.EventKey) *tcell.EventKey {
+	sel, _ := config.LoadSelectedContexts()
+	if len(sel) == 0 {
+		c.App().Flash().Warn("No contexts selected. Use Space to select contexts first.")
+		return nil
+	}
+
+	var script strings.Builder
+	script.WriteString("echo '=== rk9s multi-context overview ===' && echo '' && ")
+	for i, ctx := range sel {
+		if i > 0 {
+			script.WriteString(" && ")
+		}
+		script.WriteString(fmt.Sprintf(
+			`echo '--- Context: %s ---' && kubectl get nodes --context %s -o wide 2>&1 || echo '  (unreachable)' && echo ''`,
+			ctx, ctx,
+		))
+	}
+
+	opts := shellOpts{
+		binary:     "bash",
+		background: false,
+		args:       []string{"-c", script.String()},
+	}
+	suspend, errChan, _ := run(c.App(), &opts)
+	if !suspend {
+		c.App().Flash().Err(fmt.Errorf("failed to run multi-context command"))
+		return nil
+	}
+	go func() {
+		for e := range errChan {
+			if e != nil && !strings.Contains(e.Error(), "signal: interrupt") {
+				slog.Warn("Multi-context command error", slogs.Error, e)
+			}
+		}
+	}()
+
 	return nil
 }
 

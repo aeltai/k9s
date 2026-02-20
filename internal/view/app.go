@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sort"
 	"strings"
@@ -552,10 +553,13 @@ func (a *App) Run() error {
 		}
 		a.QueueUpdateDraw(func() {
 			a.Main.SwitchToPage("main")
-			// if command bar is already active, focus it
 			if a.CmdBuff().IsActive() {
 				a.SetFocus(a.Prompt())
 			}
+		})
+		<-time.After(500 * time.Millisecond)
+		a.QueueUpdateDraw(func() {
+			a.showRk9sStatus()
 		})
 	}()
 
@@ -568,6 +572,47 @@ func (a *App) Run() error {
 	}
 
 	return nil
+}
+
+func (a *App) showRk9sStatus() {
+	clis := []struct {
+		name string
+		bin  string
+	}{
+		{"rancher", "rancher"},
+		{"virtctl", "virtctl"},
+		{"longhornctl", "longhornctl"},
+		{"kwctl", "kwctl"},
+		{"fleet", "fleet"},
+	}
+
+	var found, missing []string
+	for _, c := range clis {
+		if _, err := exec.LookPath(c.bin); err == nil {
+			found = append(found, c.name)
+		} else {
+			missing = append(missing, c.name)
+		}
+	}
+
+	sel, _ := config.LoadSelectedContexts()
+	parts := []string{fmt.Sprintf("rk9s CLIs: %s", strings.Join(found, ", "))}
+	if len(found) == 0 {
+		parts = []string{"rk9s: no optional CLIs found"}
+	}
+	if len(missing) > 0 {
+		parts = append(parts, fmt.Sprintf("missing: %s", strings.Join(missing, ", ")))
+	}
+	if len(sel) > 0 {
+		parts = append(parts, fmt.Sprintf("%d context(s) selected", len(sel)))
+	}
+	msg := strings.Join(parts, " | ")
+
+	if len(found) > 0 {
+		a.Flash().Info(msg)
+	} else {
+		a.Flash().Warn(msg)
+	}
 }
 
 // Status reports a new app status for display.
@@ -670,6 +715,71 @@ func (a *App) gotoCmd(evt *tcell.EventKey) *tcell.EventKey {
 func (a *App) cowCmd(msg string) {
 	d := a.Styles.Dialog()
 	dialog.ShowError(&d, a.Content.Pages, msg)
+}
+
+func (a *App) rk9sCmd() {
+	script := `echo '╔══════════════════════════════════════════════╗'
+echo '║            rk9s status                        ║'
+echo '╚══════════════════════════════════════════════╝'
+echo ''
+echo '=== CLI Availability ==='
+for cli in rancher virtctl longhornctl kwctl fleet harvester kubectl; do
+  path=$(command -v "$cli" 2>/dev/null)
+  if [ -n "$path" ]; then
+    ver=$("$cli" version --client 2>/dev/null || "$cli" --version 2>/dev/null || "$cli" version 2>/dev/null || echo "installed")
+    printf '  %-14s ✓  %s\n' "$cli" "$(echo "$ver" | head -1)"
+  else
+    printf '  %-14s ✗  not found\n' "$cli"
+  fi
+done
+echo ''
+echo '=== Selected Contexts ==='
+sel_file="${XDG_CONFIG_HOME:-$HOME/.config}/rk9s/selected_contexts"
+if [ -f "$sel_file" ] && [ -s "$sel_file" ]; then
+  while IFS= read -r ctx; do
+    [ -z "$ctx" ] && continue
+    printf '  [+] %s\n' "$ctx"
+  done < "$sel_file"
+  echo ''
+  echo '=== Nodes across selected contexts ==='
+  while IFS= read -r ctx; do
+    [ -z "$ctx" ] && continue
+    echo "  --- $ctx ---"
+    kubectl get nodes --context "$ctx" -o wide 2>&1 | sed 's/^/    /'
+    echo ''
+  done < "$sel_file"
+else
+  echo '  (none) Use :contexts, then Space to select'
+fi
+echo ''
+echo '=== Plugin Directory ==='
+pdir="${XDG_DATA_HOME:-$HOME/.local/share}/rk9s/plugins"
+if [ -d "$pdir" ]; then
+  printf '  %s\n' "$pdir"
+  ls -1 "$pdir"/*.yaml 2>/dev/null | while read f; do printf '    %s\n' "$(basename "$f")"; done
+else
+  echo '  (not found)'
+fi
+echo ''
+echo 'Press Escape to return. Type :vm or :vmi for VM views with virtctl shortcuts.'`
+
+	opts := shellOpts{
+		binary:     "bash",
+		background: false,
+		args:       []string{"-c", script},
+	}
+	suspend, errChan, _ := run(a, &opts)
+	if !suspend {
+		a.Flash().Err(fmt.Errorf("failed to run rk9s status"))
+		return
+	}
+	go func() {
+		for e := range errChan {
+			if e != nil && !strings.Contains(e.Error(), "signal: interrupt") {
+				slog.Warn("rk9s status error", slogs.Error, e)
+			}
+		}
+	}()
 }
 
 func (a *App) dirCmd(path string, pushCmd bool) error {

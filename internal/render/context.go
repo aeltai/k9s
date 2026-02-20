@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 
+	"github.com/derailed/k9s/internal/config"
 	"github.com/derailed/k9s/internal/model1"
 	"github.com/derailed/tcell/v2"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,6 +39,7 @@ func (Context) ColorerFunc() model1.ColorerFunc {
 func (Context) Header(string) model1.Header {
 	return model1.Header{
 		model1.HeaderColumn{Name: "NAME"},
+		model1.HeaderColumn{Name: "SELECTED"},
 		model1.HeaderColumn{Name: "CLUSTER"},
 		model1.HeaderColumn{Name: "AUTHINFO"},
 		model1.HeaderColumn{Name: "NAMESPACE"},
@@ -55,9 +58,16 @@ func (Context) Render(o any, _ string, r *model1.Row) error {
 		name += "(*)"
 	}
 
+	sel, _ := config.LoadSelectedContexts()
+	selected := ""
+	if slices.Contains(sel, ctx.Name) {
+		selected = "+"
+	}
+
 	r.ID = ctx.Name
 	r.Fields = model1.Fields{
 		name,
+		selected,
 		ctx.Context.Cluster,
 		ctx.Context.AuthInfo,
 		ctx.Context.Namespace,
