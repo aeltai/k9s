@@ -1,16 +1,83 @@
 # rk9s – SUSE/Rancher Kubernetes TUI
 
-rk9s is a **SUSE/Rancher-focused** fork of k9s. It adds plugins and aliases for Rancher, Fleet, RKE2, K3s, Longhorn, Harvester, Kubewarden, and Traefik/NGINX Ingress. Multi-context operations run in **parallel** (inspired by [kubectl-mc](https://github.com/jonnylangefeld/kubectl-mc)).
+rk9s is a **SUSE/Rancher-focused** fork of upstream k9s. It adds plugins and aliases for Rancher, Fleet, RKE2, K3s, Longhorn, Harvester, Kubewarden, and Traefik/NGINX Ingress. Multi-context operations run in **parallel** (inspired by [kubectl-mc](https://github.com/jonnylangefeld/kubectl-mc)).
+
+- Upstream repository: [derailed/k9s](https://github.com/derailed/k9s)
+- Upstream docs (core behavior): [https://k9scli.io](https://k9scli.io)
+- This document covers rk9s fork-specific behavior and implementation details.
 
 **Press `?` in rk9s to open the Help view.** The **RK9S** section in the legend lists all our shortcuts. They also appear in **RESOURCE** when viewing the matching resource (e.g. nodes, volumes).
 
 ---
 
-## Introduction: How rk9s works
+## Implementation details: upstream baseline + rk9s logic
 
-rk9s extends k9s with **plugins** – key bindings that run shell commands. Each plugin is scoped to a resource type (e.g. nodes, pods, Longhorn volumes). When you press a shortcut in the right view, rk9s passes context via env vars (`$NAME`, `$NAMESPACE`, `$CONTEXT`, `$KUBECONFIG`) and runs the command.
+rk9s keeps upstream k9s core behavior (resource discovery, watchers, rendering, command mode) and layers Rancher/SUSE-focused defaults on top.
 
-**Example:** On a node, press **Shift-C** → rk9s runs `kubectl debug node/$NAME ...` to show RKE2/K3s config.
+### Startup sync and config layout
+
+At startup, rk9s initializes XDG paths and syncs fork defaults:
+
+1. Embedded plugins in `internal/config/default_plugins/*.yaml` are synced to `~/.local/share/rk9s/plugins/`.
+2. Dashboard/navigation hotkeys are synced into `~/.config/rk9s/hotkeys.yaml`.
+   - `rk9s-*` hotkey entries are force-updated each startup.
+   - Non-rk9s user hotkeys are preserved.
+
+### Action resolution order (key handling)
+
+In a resource view, rk9s resolves actions in this order:
+
+1. Base table/view actions.
+2. Plugin shortcuts loaded from plugin files.
+3. Hotkeys loaded from hotkeys config.
+4. View-specific bindings are re-applied last so core per-view actions still win when needed.
+
+Collision behavior:
+
+- A plugin or hotkey must set `override: true` to replace an existing shortcut.
+- Without `override: true`, duplicate bindings are ignored and logged.
+
+### Plugin loading precedence
+
+Plugins are merged from multiple locations. If two plugins have the same key/name, the one loaded later wins.
+
+Load order:
+
+1. `~/.config/rk9s/plugins.yaml`
+2. Active cluster/context plugin file (`.../clusters/<cluster>/<context>/plugins.yaml`)
+3. XDG plugin directories:
+   - `$XDG_DATA_DIRS/rk9s/plugins`
+   - `$XDG_DATA_HOME/rk9s/plugins`
+   - `$XDG_CONFIG_HOME/rk9s/plugins`
+
+In practice, files in `~/.config/rk9s/plugins/` can override bundled defaults that are synced to `~/.local/share/rk9s/plugins/`.
+
+### Plugin execution behavior
+
+- If a plugin has **no** `args` and **no** `pipes`, rk9s treats `command` as an in-TUI command and navigates directly.
+- If `inView: true`, command output is rendered inside a Details panel.
+- Otherwise, rk9s executes the command as a shell process (foreground/background based on plugin settings).
+
+### Multi-context execution model
+
+Selected contexts are persisted in `~/.config/rk9s/selected_contexts` (or equivalent XDG path), one context per line.
+
+When 2+ contexts are selected and you open a Kubernetes resource view:
+
+- rk9s enables multi-context table mode automatically.
+- Data is listed in parallel (up to 10 contexts concurrently) with per-context dynamic clients.
+- Unreachable contexts are skipped (warning logged), not fatal.
+- A `CLUSTER` column is injected into the table.
+- Internal row IDs are encoded as `<context>@@<resource-path>`.
+
+For row actions (`describe`, `yaml`, `edit`, delete, plugin commands), rk9s detects row context and executes in that context.
+
+Plugin env context values:
+
+- `$CONTEXT` = context of the selected row
+- `$CONTEXTS` = comma-separated list of all selected contexts
+
+**Example:** On a node, press **Shift-C** to run `kubectl debug node/$NAME ...` in the selected context and show RKE2/K3s config.
 
 ---
 
@@ -92,6 +159,21 @@ Type `:rk9s` or `:status` to see a full status page: CLI versions, selected cont
 
 Press **?** in rk9s to see the Help view. The **RK9S** section lists our shortcuts. The **RESOURCE** section shows view-specific bindings.
 
+### Global navigation hotkeys (synced on startup)
+
+| Key | Command | Opens |
+|-----|---------|-------|
+| **F1** | `home` | Home dashboard |
+| **F2** | `clusters.management.cattle.io` | Rancher clusters |
+| **F3** | `helmcharts.helm.cattle.io` | RKE2/K3s distro view |
+| **F4** | `nodes node-role.kubernetes.io/control-plane=true` | etcd/control-plane nodes |
+| **F5** | `nodes` | Nodes |
+| **F6** | `gitrepos.fleet.cattle.io` | Fleet GitRepos |
+| **F7** | `volumes.longhorn.io` | Longhorn volumes |
+| **F8** | `virtualmachines.kubevirt.io` | KubeVirt/Harvester VMs |
+| **F9** | `rk9s` | rk9s status dashboard |
+| **F10** | `context` | Contexts view |
+
 ### Multi-context selection (contexts view)
 
 The context list shows a **SELECTED** column with `+` for each selected context.
@@ -101,9 +183,9 @@ The context list shows a **SELECTED** column with `+` for each selected context.
 | **Space** | Toggle current context selection |
 | **Ctrl-A** | Select all contexts |
 | **Ctrl-Space** | Clear selection |
-| **Shift-M** | Show nodes from all selected contexts |
+| **Enter** | Switch active context (normal single-context switch) |
 
-Select one or more contexts; `$CONTEXTS` is then available to plugins (comma-separated) for multi-cluster operations.
+After selecting at least 2 contexts, open any Kubernetes resource view (`:nodes`, `:pods`, `:volumes.longhorn.io`, etc.). rk9s will automatically switch that view into multi-context mode, inject a `CLUSTER` column, and fetch data in parallel. `$CONTEXTS` is then available to plugins for multi-cluster actions.
 
 ### All views
 | Shortcut | Action |
@@ -183,15 +265,17 @@ Alias: `:vm` for VirtualMachine, `:vmi` for VirtualMachineInstance.
 
 ### How to: Run commands across multiple clusters
 
-1. `:contexts` to open the context list.
+1. Open contexts (`:contexts` or **F10**).
 2. The **SELECTED** column shows `+` for selected contexts.
 3. **Space** to select contexts, **Ctrl-A** to select all.
-4. **Shift-M** runs `kubectl get nodes` across all selected contexts **in parallel** (like [kubectl-mc](https://github.com/jonnylangefeld/kubectl-mc)) and shows combined output.
-5. Type `:rk9s` for a full status page with CLI versions, selected contexts, and nodes (also parallel).
+4. Open any resource view (for example **F5** / `:nodes` or `:pods`).
+5. With 2+ contexts selected, the table auto-switches to multi-context mode and shows the `CLUSTER` column.
+6. Use normal row actions (`y`, `d`, `e`, plugins). rk9s executes each row action in that row's context.
+7. Type `:rk9s` (or `:status`) for a status dashboard with selected contexts and CLI/tooling checks.
 
 Plugins on other views also receive `$CONTEXTS` (comma-separated) for multi-cluster operations.
 
-> **Speed:** With 10+ clusters, parallel execution is 3-5x faster than sequential. All kubectl calls run as background jobs and results are displayed in order.
+> **Implementation note:** Multi-context listing is parallel with a max concurrency of 10 contexts and skips unreachable contexts instead of failing the full view.
 
 ### How to: Trim a Longhorn volume
 
@@ -251,11 +335,28 @@ Create `~/.config/rk9s/plugins.yaml` or add YAML in `~/.local/share/rk9s/plugins
 plugins:
   my-plugin:
     shortCut: Shift-2
-    description: My custom action
+    description: Show selected resource identity
     scopes: [pods]
     command: echo
-    args: [$NAME $NAMESPACE]
+    args: ["$CONTEXT/$NAMESPACE/$NAME"]
+
+  my-multi-context-plugin:
+    shortCut: Shift-3
+    description: Check selected pod across all selected contexts
+    scopes: [pods]
+    command: bash
+    inView: true
+    args:
+      - -c
+      - |
+        IFS=',' read -r -a CTX_ARR <<< "$CONTEXTS"
+        for C in "${CTX_ARR[@]}"; do
+          echo "=== [$C] ==="
+          kubectl --context "$C" -n "$NAMESPACE" get pod "$NAME" -o wide 2>/dev/null || echo "not found"
+        done
 ```
+
+Use `$CONTEXT` for current row context and `$CONTEXTS` for the selected context set.
 
 ---
 
@@ -273,4 +374,4 @@ Optional env vars:
 - `RANCHER_SERVER` – Rancher server URL (rancher CLI)
 - `HARVESTER_CONFIG` – Harvester kubeconfig (harvester CLI)
 
-See the main [README](README.md) for k9s usage.
+See [README.md](README.md) for project-level notes and [k9scli.io](https://k9scli.io) for upstream k9s behavior.

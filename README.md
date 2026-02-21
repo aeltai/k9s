@@ -62,7 +62,11 @@ Your donations will go a long way in keeping our servers lights on and beers in 
 
 ## Documentation
 
-Please refer to our [K9s documentation](https://k9scli.io) site for installation, usage, customization and tips.
+This repository is an rk9s fork that builds on upstream k9s.
+
+- Upstream project: [derailed/k9s](https://github.com/derailed/k9s)
+- Upstream docs (core k9s behavior): [https://k9scli.io](https://k9scli.io)
+- rk9s implementation details and usage (fork-specific): [RK9S.md](RK9S.md)
 
 ---
 
