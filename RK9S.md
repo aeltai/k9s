@@ -1,5 +1,7 @@
 # rk9s – SUSE/Rancher Kubernetes TUI
 
+> NOTE: This guide is now also merged into the root project README under **"rk9s Fork Guide (Merged in project root)"**.
+
 rk9s is a **SUSE/Rancher-focused** fork of upstream k9s. It adds plugins and aliases for Rancher, Fleet, RKE2, K3s, Longhorn, Harvester, Kubewarden, and Traefik/NGINX Ingress. Multi-context operations run in **parallel** (inspired by [kubectl-mc](https://github.com/jonnylangefeld/kubectl-mc)).
 
 - Upstream repository: [derailed/k9s](https://github.com/derailed/k9s)
